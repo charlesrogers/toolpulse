@@ -49,14 +49,20 @@ def download_live_sitemap() -> dict[str, str]:
     """Download HF's current sitemap and extract all product URLs.
 
     Returns dict of {sku: canonical_url}.
-    The sitemap XML is not behind PerimeterX.
+    Note: PerimeterX may block this from datacenter IPs (GitHub Actions, etc.).
+    Falls back gracefully if blocked.
     """
     print("Downloading live HF sitemap...")
 
     # Step 1: Get sitemap index
     index_url = "https://www.harborfreight.com/sitemap.xml"
-    resp = requests.get(index_url, headers=HEADERS, timeout=30)
-    resp.raise_for_status()
+    try:
+        resp = requests.get(index_url, headers=HEADERS, timeout=30)
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        print(f"  ✗ Sitemap blocked ({e}). PerimeterX likely blocking this IP.")
+        print("  Falling back to CDX discovery only.")
+        return {}
 
     soup = BeautifulSoup(resp.text, "lxml-xml")
     sitemap_urls = [loc.text for loc in soup.find_all("loc")]
