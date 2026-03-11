@@ -70,17 +70,17 @@ def fetch_with_retry(url: str, timeout: int = 30) -> requests.Response | None:
 def find_snapshots(product_url: str, limit: int = 100) -> list[dict]:
     """Query the Wayback Machine CDX API for snapshots of a product URL.
 
-    Only fetches snapshots from 2018+ when HF added structured price data
-    (og:price:amount / JSON-LD). Collapses to one per month for efficiency.
+    Focuses on 2024+ data (recent prices matter most).
+    Collapses to one per month for efficiency.
     """
     params = {
         "url": product_url,
         "output": "json",
         "fl": "timestamp,original,statuscode",
         "filter": "statuscode:200",
-        "from": "20180101",  # HF added structured price data ~2018
+        "from": "20240101",  # Focus on recent data (2024+)
         "limit": limit,
-        "collapse": "timestamp:6",  # One per month (not per day)
+        "collapse": "timestamp:6",  # One per month
     }
 
     resp = fetch_with_retry(f"{CDX_API}?{'&'.join(f'{k}={v}' for k, v in params.items())}")

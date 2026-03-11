@@ -326,6 +326,47 @@ document.getElementById('filter').addEventListener('change', e => {{
 // Detail panel
 let chartInstance = null;
 
+function buildTimeline(p) {{
+  const timeline = [];
+  // Add price snapshots
+  p.snapshots.forEach(s => {{
+    timeline.push({{ date: s.date, price: s.price, type: 'regular', source: s.source, sale: s.sale }});
+  }});
+  // Add deals
+  p.deal_list.forEach(d => {{
+    const dealDate = d.from || d.thru || '';
+    if (dealDate) {{
+      timeline.push({{ date: dealDate, price: d.price, type: 'deal', source: d.source, promo: d.promo, code: d.code, thru: d.thru, url: d.url }});
+    }}
+  }});
+  // Sort by date
+  timeline.sort((a, b) => a.date.localeCompare(b.date));
+  // Annotate changes
+  let lastRegular = null;
+  timeline.forEach(t => {{
+    if (t.type === 'regular') {{
+      if (lastRegular === null) {{
+        t.change = 'first'; t.label = 'First recorded price';
+      }} else if (t.price > lastRegular) {{
+        t.change = 'up'; t.delta = t.price - lastRegular; t.label = 'Price increase +' + formatPrice(t.delta);
+      }} else if (t.price < lastRegular) {{
+        t.change = 'down'; t.delta = lastRegular - t.price; t.label = 'Price decrease -' + formatPrice(t.delta);
+      }} else {{
+        t.change = 'same'; t.label = 'No change';
+      }}
+      lastRegular = t.price;
+    }} else {{
+      t.change = 'deal';
+      t.label = 'Deal' + (t.code ? ' (code: ' + t.code + ')' : '') + (t.promo ? ' promo #' + t.promo : '');
+      if (lastRegular != null && t.price < lastRegular) {{
+        const savings = lastRegular - t.price;
+        t.label += ' — save ' + formatPrice(savings) + ' off $' + lastRegular.toFixed(2);
+      }}
+    }}
+  }});
+  return timeline;
+}}
+
 function showDetail(sku) {{
   const p = DATA.find(x => x.sku === sku);
   if (!p) return;
@@ -333,37 +374,31 @@ function showDetail(sku) {{
   const panel = document.getElementById('detail');
   const hfLink = p.url ? `<a href="${{p.url}}" target="_blank">${{p.url}}</a>` : 'No URL';
 
-  let snapHtml = '';
-  if (p.snapshots.length) {{
-    snapHtml = `<div class="section-title">Price History (${{p.snapshots.length}} snapshots)</div>
+  // Build unified timeline: merge price snapshots + deals, sorted by date
+  const timeline = buildTimeline(p);
+  const hasTimeline = timeline.length > 0;
+
+  let timelineHtml = '';
+  if (hasTimeline) {{
+    const rows = timeline.map(t => {{
+      const priceColor = t.type === 'deal' ? 'color:#7ddf64;font-weight:600' : '';
+      const rowBg = t.change === 'up' ? 'background:rgba(255,107,107,0.08)' : t.change === 'down' ? 'background:rgba(125,223,100,0.08)' : t.type === 'deal' ? 'background:rgba(240,192,64,0.08)' : '';
+      const changeIcon = t.change === 'up' ? '<span style="color:#ff6b6b">&#9650;</span>'
+        : t.change === 'down' ? '<span style="color:#7ddf64">&#9660;</span>'
+        : t.type === 'deal' ? '<span style="color:#f0c040">&#9733;</span>'
+        : t.change === 'first' ? '&#127991;' : '—';
+      const typeLabel = t.type === 'deal' ? '<span class="deal-badge">Deal</span>' : t.source === 'wayback' ? 'Wayback' : (t.source || '');
+      const linkHtml = t.url ? ' <a href="' + t.url + '" target="_blank" style="color:#6c9fff">[coupon]</a>' : '';
+      return `<tr style="${{rowBg}}"><td>${{t.date}}</td><td style="${{priceColor}}">${{formatPrice(t.price)}}</td><td>${{typeLabel}}</td><td>${{changeIcon}}</td><td>${{t.label}}${{linkHtml}}</td></tr>`;
+    }}).join('');
+    timelineHtml = `<div class="section-title">Price Timeline (${{timeline.length}} events)</div>
       <div class="chart-container"><canvas id="priceChart"></canvas></div>
       <table class="deal-table">
-        <thead><tr><th>Date</th><th>Price</th><th>Source</th></tr></thead>
-        <tbody>${{p.snapshots.map(s =>
-          `<tr><td>${{s.date}}</td><td>${{formatPrice(s.price)}}</td><td>${{s.source}}</td></tr>`
-        ).join('')}}</tbody>
+        <thead><tr><th>Date</th><th>Price</th><th>Type</th><th></th><th>Details</th></tr></thead>
+        <tbody>${{rows}}</tbody>
       </table>`;
   }} else {{
-    snapHtml = '<div class="section-title">Price History</div><div class="no-data-msg">No price snapshots yet — pending Wayback backfill</div>';
-  }}
-
-  let dealHtml = '';
-  if (p.deal_list.length) {{
-    dealHtml = `<div class="section-title">Deals (${{p.deal_list.length}})</div>
-      <table class="deal-table">
-        <thead><tr><th>Deal Price</th><th>Valid Through</th><th>Promo</th><th>Source</th><th>Link</th></tr></thead>
-        <tbody>${{p.deal_list.map(d =>
-          `<tr>
-            <td style="color:#7ddf64;font-weight:600">${{formatPrice(d.price)}}</td>
-            <td>${{d.thru || '—'}}</td>
-            <td>${{d.promo || '—'}}</td>
-            <td>${{d.source}}</td>
-            <td>${{d.url ? '<a href="' + d.url + '" target="_blank">coupon</a>' : ''}}</td>
-          </tr>`
-        ).join('')}}</tbody>
-      </table>`;
-  }} else {{
-    dealHtml = '<div class="section-title">Deals</div><div class="no-data-msg">No deals tracked</div>';
+    timelineHtml = '<div class="section-title">Price Timeline</div><div class="no-data-msg">No price data yet — pending Wayback backfill</div>';
   }}
 
   // Savings calc
@@ -386,44 +421,46 @@ function showDetail(sku) {{
       · ${{hfLink}}
     </div>
     ${{savingsHtml}}
-    ${{snapHtml}}
-    ${{dealHtml}}
+    ${{timelineHtml}}
   `;
 
   document.getElementById('overlay').classList.add('open');
 
-  // Render chart
-  if (p.snapshots.length > 1) {{
+  // Render chart from unified timeline
+  if (hasTimeline && timeline.length > 1) {{
     if (chartInstance) chartInstance.destroy();
     const ctx = document.getElementById('priceChart').getContext('2d');
-    const labels = p.snapshots.map(s => s.date);
-    const prices = p.snapshots.map(s => s.price);
 
-    // Add deal prices as separate dataset
-    const dealPoints = p.deal_list
-      .filter(d => d.from)
-      .map(d => ({{ x: d.from, y: d.price }}));
+    const regularPts = timeline.filter(t => t.type === 'regular');
+    const dealPts = timeline.filter(t => t.type === 'deal');
+    // Use all dates as labels for x-axis
+    const allDates = timeline.map(t => t.date);
 
     chartInstance = new Chart(ctx, {{
       type: 'line',
       data: {{
-        labels,
+        labels: allDates,
         datasets: [
           {{
             label: 'Regular Price',
-            data: prices,
+            data: timeline.map(t => t.type === 'regular' ? t.price : null),
             borderColor: '#6c9fff',
             backgroundColor: 'rgba(108,159,255,0.1)',
             fill: true,
             tension: 0.3,
-            pointRadius: 4,
+            pointRadius: t => {{
+              const idx = timeline.indexOf(t);
+              return idx >= 0 && timeline[idx].change !== 'same' ? 5 : 3;
+            }},
+            pointBackgroundColor: timeline.map(t => t.change === 'up' ? '#ff6b6b' : t.change === 'down' ? '#7ddf64' : '#6c9fff'),
+            spanGaps: true,
           }},
-          ...(dealPoints.length ? [{{
+          ...(dealPts.length ? [{{
             label: 'Deal Price',
-            data: dealPoints,
+            data: timeline.map(t => t.type === 'deal' ? t.price : null),
             borderColor: '#7ddf64',
-            backgroundColor: '#7ddf64',
-            pointRadius: 6,
+            backgroundColor: '#f0c040',
+            pointRadius: 7,
             pointStyle: 'triangle',
             showLine: false,
           }}] : []),
@@ -434,9 +471,17 @@ function showDetail(sku) {{
         maintainAspectRatio: false,
         plugins: {{
           legend: {{ labels: {{ color: '#aaa' }} }},
+          tooltip: {{
+            callbacks: {{
+              label: function(ctx) {{
+                const t = timeline[ctx.dataIndex];
+                return t ? (t.type === 'deal' ? 'Deal: ' : 'Price: ') + '$' + t.price.toFixed(2) + (t.label ? ' — ' + t.label : '') : '';
+              }}
+            }}
+          }},
         }},
         scales: {{
-          x: {{ ticks: {{ color: '#888' }}, grid: {{ color: '#282a36' }} }},
+          x: {{ ticks: {{ color: '#888', maxRotation: 45 }}, grid: {{ color: '#282a36' }} }},
           y: {{
             ticks: {{
               color: '#888',

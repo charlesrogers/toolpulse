@@ -2,14 +2,14 @@ name: Wayback Backfill
 
 on:
   schedule:
-    # Run hourly — 3 parallel slices x 15 products = 45/hour = 1080/day
+    # Run hourly — 3 parallel slices x 30 products = 90/hour = 2160/day
     - cron: '47 * * * *'
   workflow_dispatch:
     inputs:
       batch_size:
         description: 'Number of products to backfill per slice per run'
         required: false
-        default: '15'
+        default: '30'
 
 permissions:
   contents: write
@@ -119,7 +119,7 @@ jobs:
 
       - name: Run Wayback backfill batch (slice ${{ matrix.slice }})
         env:
-          BATCH_SIZE: ${{ github.event.inputs.batch_size || '15' }}
+          BATCH_SIZE: ${{ github.event.inputs.batch_size || '30' }}
           SLICE: ${{ matrix.slice }}
         run: python3 scrapers/wayback_batch.py --db --batch-size $BATCH_SIZE --slice $SLICE --total-slices 3
 

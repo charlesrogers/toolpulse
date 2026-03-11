@@ -362,7 +362,7 @@ def build_priority_queue() -> list[dict]:
 
 def main():
     save_db = "--db" in sys.argv
-    batch_size = 15
+    batch_size = 30
 
     if "--batch-size" in sys.argv:
         idx = sys.argv.index("--batch-size")
