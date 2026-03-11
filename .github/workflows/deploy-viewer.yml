@@ -1,34 +1,24 @@
 name: Deploy Viewer to GitHub Pages
 
 on:
-  # Trigger after backfill workflows complete
   workflow_run:
     workflows:
       - "Wayback Backfill"
       - "Wayback go.hf Backfill"
-      - "Daily Deal Scrape"
     types: [completed]
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
-# Only allow one deployment at a time
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
   deploy:
-    # Deploy on manual trigger or after any backfill run (even cancelled — slice 0 may have uploaded DB)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout
@@ -44,7 +34,7 @@ jobs:
         with:
           name: toolpulse-db
           path: data/
-          if_no_artifact_found: fail
+          if_no_artifact_found: warn
           search_artifacts: true
           workflow: wayback-backfill.yml
           workflow_conclusion: ''
@@ -52,19 +42,13 @@ jobs:
       - name: Generate viewer.html
         run: python3 generate_viewer.py
 
-      - name: Prepare Pages directory
+      - name: Deploy to gh-pages branch
         run: |
-          mkdir -p _site
-          cp viewer.html _site/index.html
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan gh-pages-deploy
+          git rm -rf .
+          cp viewer.html index.html
+          git add index.html
+          git commit -m "Update viewer $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push origin gh-pages-deploy:gh-pages --force
