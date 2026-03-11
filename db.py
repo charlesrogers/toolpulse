@@ -164,6 +164,9 @@ class ToolPulseDB:
             promo_id = deal.get("promo_id")
             deal_price = deal.get("price")
 
+            # Use snapshot_date (actual archive date) as valid_from when available
+            valid_from = deal.get("snapshot_date") or now[:10]
+
             try:
                 self.conn.execute(
                     """INSERT INTO deals
@@ -172,7 +175,7 @@ class ToolPulseDB:
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (item, deal_price, deal.get("coupon_code"), promo_id,
                      1 if deal.get("is_itc") else 0,
-                     now[:10], deal.get("valid_through"),
+                     valid_from, deal.get("valid_through"),
                      deal.get("source", "go_hf"), deal.get("source_url"),
                      deal.get("coupon_url"), now)
                 )
@@ -187,6 +190,21 @@ class ToolPulseDB:
                      item, promo_id, deal_price)
                 )
                 updated += 1
+
+            # Also record as a price snapshot (sale_price) so deals show in price history
+            if deal_price and valid_from:
+                source = deal.get("source", "go_hf")
+                try:
+                    self.conn.execute(
+                        """INSERT INTO price_snapshots
+                           (item_number, snapshot_date, regular_price, sale_price, source,
+                            source_url, created_at)
+                           VALUES (?, ?, NULL, ?, ?, ?, ?)""",
+                        (item, valid_from, deal_price, f"deal_{source}",
+                         deal.get("source_url"), now)
+                    )
+                except sqlite3.IntegrityError:
+                    pass  # Already have a snapshot for this item+date+source
 
         self.conn.commit()
         return inserted, updated
