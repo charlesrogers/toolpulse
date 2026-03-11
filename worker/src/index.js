@@ -18,8 +18,13 @@
 
 const CDX_API = "https://web.archive.org/cdx/search/cdx";
 const WAYBACK_BASE = "https://web.archive.org/web";
-const BATCH_SIZE = 5; // Products per cron invocation (keep small for 30s CPU limit)
-const SNAPSHOT_DELAY_MS = 1500; // Delay between Wayback fetches
+const BATCH_SIZE = 2; // Products per cron invocation (Workers have 30s wall clock)
+const MAX_SNAPSHOTS_PER_PRODUCT = 8; // Cap to stay within time limits
+const SNAPSHOT_DELAY_MS = 500; // Delay between Wayback fetches
+const FETCH_HEADERS = {
+  "User-Agent": "ToolPulse/1.0 (historical price research; Cloudflare Worker)",
+  Accept: "application/json, text/html, */*",
+};
 
 // ── CDX API ─────────────────────────────────────────────────────────────────
 
@@ -33,7 +38,7 @@ async function findSnapshots(productUrl, limit = 30) {
     collapse: "timestamp:8", // One per day
   });
 
-  const resp = await fetch(`${CDX_API}?${params}`);
+  const resp = await fetch(`${CDX_API}?${params}`, { headers: FETCH_HEADERS });
   if (!resp.ok) return [];
 
   const data = await resp.json();
@@ -54,7 +59,7 @@ async function extractPrice(timestamp, originalUrl) {
 
   let resp;
   try {
-    resp = await fetch(waybackUrl, { cf: { cacheTtl: 3600 } });
+    resp = await fetch(waybackUrl, { headers: FETCH_HEADERS });
     if (!resp.ok) return null;
   } catch {
     return null;
@@ -130,14 +135,22 @@ async function backfillProduct(productUrl) {
   const skuMatch = productUrl.match(/-(\d{5,})\.html/);
   const sku = skuMatch ? skuMatch[1] : "unknown";
 
-  const snapshots = await findSnapshots(productUrl);
+  console.log(`  Processing SKU ${sku}...`);
+  const snapshots = await findSnapshots(productUrl, MAX_SNAPSHOTS_PER_PRODUCT);
+  console.log(`  Found ${snapshots.length} snapshots`);
   if (!snapshots.length) return { sku, prices: [], snapshots: 0 };
 
   const prices = [];
   for (const snap of snapshots) {
-    const price = await extractPrice(snap.timestamp, snap.original);
-    if (price) prices.push(price);
-    // Small delay to be nice to archive.org
+    try {
+      const price = await extractPrice(snap.timestamp, snap.original);
+      if (price) {
+        prices.push(price);
+        console.log(`    ${price.date}: $${price.price}`);
+      }
+    } catch (e) {
+      console.log(`    Error on ${snap.timestamp}: ${e.message}`);
+    }
     await new Promise((r) => setTimeout(r, SNAPSHOT_DELAY_MS));
   }
 
@@ -239,6 +252,52 @@ async function handleRequest(request, env) {
     await kv.put("url_queue", JSON.stringify(urls));
     await kv.put("progress", JSON.stringify({ index: 0 }));
     return Response.json({ queued: urls.length, urls: urls.slice(0, 10) });
+  }
+
+  // GET /test — diagnostic: test a single Wayback fetch
+  if (url.pathname === "/test") {
+    const testUrl = "https://www.harborfreight.com/4-in-x-36-in-belt-and-6-in-disc-sander-58339.html";
+    const diag = { steps: [] };
+
+    // Step 1: CDX query
+    try {
+      // Raw CDX fetch for debugging
+      const cdxParams = new URLSearchParams({
+        url: testUrl, output: "json", fl: "timestamp,original,statuscode",
+        filter: "statuscode:200", limit: "2", collapse: "timestamp:8",
+      });
+      const cdxResp = await fetch(`${CDX_API}?${cdxParams}`, { headers: FETCH_HEADERS });
+      const cdxText = await cdxResp.text();
+      diag.steps.push({ step: "cdx_raw", status: cdxResp.status, body_length: cdxText.length, first_300: cdxText.slice(0, 300) });
+
+      const snaps = await findSnapshots(testUrl, 2);
+      diag.steps.push({ step: "cdx_parsed", snapshots: snaps.length, first: snaps[0] || null });
+
+      if (snaps.length > 0) {
+        // Step 2: Fetch one archived page
+        const ts = snaps[0].timestamp;
+        const waybackUrl = `${WAYBACK_BASE}/${ts}id_/${snaps[0].original}`;
+        const resp = await fetch(waybackUrl, { headers: FETCH_HEADERS });
+        const status = resp.status;
+        const html = await resp.text();
+        diag.steps.push({
+          step: "fetch",
+          url: waybackUrl,
+          status,
+          html_length: html.length,
+          has_og_price: html.includes('og:price:amount'),
+          has_jsonld: html.includes('application/ld+json'),
+          first_500_chars: html.slice(0, 500),
+        });
+
+        // Step 3: Try extraction
+        const price = await extractPrice(ts, snaps[0].original);
+        diag.steps.push({ step: "extract", result: price });
+      }
+    } catch (e) {
+      diag.steps.push({ step: "error", message: e.message, stack: e.stack });
+    }
+    return Response.json(diag);
   }
 
   // GET /status — show backfill progress

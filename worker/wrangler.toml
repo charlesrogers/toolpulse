@@ -9,4 +9,4 @@ crons = ["23 */6 * * *"]
 # KV namespace for tracking progress and storing results
 [[kv_namespaces]]
 binding = "TOOLPULSE_KV"
-id = "" # Fill in after: wrangler kv namespace create TOOLPULSE_KV
+id = "15cf6a1187e64cc3a35bd42a3449bb92"
