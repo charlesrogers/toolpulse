@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   scrape:
@@ -27,6 +28,7 @@ jobs:
         run: pip install requests beautifulsoup4 lxml
 
       - name: Restore database from artifact
+        continue-on-error: true
         uses: dawidd6/action-download-artifact@v6
         with:
           name: toolpulse-db
