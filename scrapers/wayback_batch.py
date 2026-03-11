@@ -475,7 +475,7 @@ def main():
             print(f"    -> {url}")
 
         try:
-            prices = backfill_product(url, max_snapshots=30)
+            prices = backfill_product(url, max_snapshots=12)
 
             if prices and db:
                 count = db.import_wayback_prices(sku, prices)

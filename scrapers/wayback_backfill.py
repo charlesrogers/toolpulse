@@ -68,14 +68,19 @@ def fetch_with_retry(url: str, timeout: int = 30) -> requests.Response | None:
 # ── CDX API: Find archived snapshots ────────────────────────────────────────
 
 def find_snapshots(product_url: str, limit: int = 100) -> list[dict]:
-    """Query the Wayback Machine CDX API for all snapshots of a product URL."""
+    """Query the Wayback Machine CDX API for snapshots of a product URL.
+
+    Only fetches snapshots from 2018+ when HF added structured price data
+    (og:price:amount / JSON-LD). Collapses to one per month for efficiency.
+    """
     params = {
         "url": product_url,
         "output": "json",
         "fl": "timestamp,original,statuscode",
         "filter": "statuscode:200",
+        "from": "20180101",  # HF added structured price data ~2018
         "limit": limit,
-        "collapse": "timestamp:8",  # One per day
+        "collapse": "timestamp:6",  # One per month (not per day)
     }
 
     resp = fetch_with_retry(f"{CDX_API}?{'&'.join(f'{k}={v}' for k, v in params.items())}")
@@ -195,6 +200,7 @@ def backfill_product(product_url: str, max_snapshots: int = 50) -> list[dict]:
 
     prices = []
     last_price = None
+    consecutive_failures = 0
 
     for i, snap in enumerate(snapshots):
         ts = snap["timestamp"]
@@ -202,6 +208,7 @@ def backfill_product(product_url: str, max_snapshots: int = 50) -> list[dict]:
 
         price_data = extract_price_from_snapshot(ts, snap["original"])
         if price_data:
+            consecutive_failures = 0
             current_price = price_data.get("price")
             change = ""
             if last_price is not None and current_price != last_price:
@@ -211,12 +218,17 @@ def backfill_product(product_url: str, max_snapshots: int = 50) -> list[dict]:
             last_price = current_price
             prices.append(price_data)
         else:
+            consecutive_failures += 1
             print(f"  {date_str}: (no price found)")
+            # If we've failed 5 in a row, this URL probably never had structured data
+            if consecutive_failures >= 5 and not prices:
+                print(f"  Skipping remaining — no structured price data found")
+                break
 
         if (i + 1) % 10 == 0:
-            print(f"  Progress: {i + 1}/{len(snapshots)} snapshots")
+            print(f"  Progress: {i + 1}/{len(snapshots)} snapshots, {len(prices)} prices found")
 
-        time.sleep(2)  # Be nice to archive.org
+        time.sleep(1.5)  # Be nice to archive.org (reduced from 2s)
 
     return prices
 
