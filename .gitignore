@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 data/*.db
 data/*.json
+!data/go_hf_wayback_urls.json
 emails/
 logs/
 .env
