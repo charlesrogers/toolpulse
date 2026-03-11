@@ -481,12 +481,30 @@ def main():
 
     print(f"  Previously found (this slice): {total_deals_found} deals")
 
-    # Step 1: Discover all archived URLs
-    print("\nStep 1: Discovering archived go.harborfreight.com URLs...")
-    all_url_entries = discover_go_hf_urls()
+    # Step 1: Load pre-discovered URLs or discover via CDX
+    url_cache_file = os.path.join(DATA_DIR, "go_hf_wayback_urls.json")
+    if os.path.exists(url_cache_file):
+        print("\nStep 1: Loading pre-discovered go.hf URLs...")
+        with open(url_cache_file) as f:
+            all_url_entries = json.load(f)
+        # Ensure entries have the right format
+        for entry in all_url_entries:
+            if "snapshot_count" not in entry:
+                entry["snapshot_count"] = 1
+        type_summary = {}
+        for e in all_url_entries:
+            t = e.get("type", "unknown")
+            type_summary[t] = type_summary.get(t, 0) + 1
+        print(f"  Loaded {len(all_url_entries)} URLs from cache")
+        for t, c in sorted(type_summary.items()):
+            print(f"    {t}: {c}")
+    else:
+        print("\nStep 1: Discovering archived go.harborfreight.com URLs via CDX...")
+        all_url_entries = discover_go_hf_urls()
 
     if not all_url_entries:
         print("No archived URLs found. Nothing to do.")
+        print("  Tip: Run locally first to generate go_hf_wayback_urls.json, then upload as artifact")
         return
 
     # Filter out completed URLs
