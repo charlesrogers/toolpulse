@@ -62,6 +62,15 @@ jobs:
           search_artifacts: true
           workflow: wayback-backfill.yml
 
+      - name: Restore email deal items
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: email-deal-items
+          path: data/
+          if_no_artifact_found: warn
+          search_artifacts: true
+
       - name: Run Wayback backfill batch
         env:
           BATCH_SIZE: ${{ github.event.inputs.batch_size || '30' }}
