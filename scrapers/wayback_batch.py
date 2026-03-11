@@ -452,8 +452,16 @@ def main():
     skipped_no_url = 0
     # Track this slice's newly completed SKUs separately
     slice_completed = set(progress.get("completed_skus", []))
+    start_time = time.time()
+    MAX_RUN_SECONDS = 25 * 60  # Exit cleanly before 30-min job timeout
 
     for i, item in enumerate(batch):
+        # Time guard: exit cleanly so progress + DB get uploaded
+        elapsed = time.time() - start_time
+        if elapsed > MAX_RUN_SECONDS:
+            print(f"\n  Time limit reached ({elapsed/60:.1f}min), stopping to save progress")
+            break
+
         sku = item["sku"]
         url = item["url"]
 
@@ -491,13 +499,14 @@ def main():
             completed_skus.add(sku)  # Skip on error, don't retry forever
             slice_completed.add(sku)
 
+        # Save progress after every SKU (cancelled runs lose unsaved work)
+        progress["completed_skus"] = list(slice_completed)
+        progress["total_processed"] = total_processed
+        progress["last_run"] = datetime.now(timezone.utc).isoformat()
+        save_progress(progress, slice_idx)
+
         if (i + 1) % 5 == 0:
             print(f"\n  Batch progress: {i + 1}/{len(batch)}")
-            # Save intermediate progress
-            progress["completed_skus"] = list(slice_completed)
-            progress["total_processed"] = total_processed
-            progress["last_run"] = datetime.now(timezone.utc).isoformat()
-            save_progress(progress, slice_idx)
 
         time.sleep(0.5)
 

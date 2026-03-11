@@ -37,19 +37,19 @@ HEADERS = {
 CDX_API = "https://web.archive.org/cdx/search/cdx"
 WAYBACK_BASE = "https://web.archive.org/web"
 
-MAX_RETRIES = 3
-RETRY_BACKOFF = 5  # seconds, multiplied by attempt number
+MAX_RETRIES = 2
+RETRY_BACKOFF = 3  # seconds, multiplied by attempt number
 
 
 # ── HTTP with retry ──────────────────────────────────────────────────────────
 
-def fetch_with_retry(url: str, timeout: int = 30) -> requests.Response | None:
-    """Fetch URL with exponential backoff retry on connection errors."""
+def fetch_with_retry(url: str, timeout: int = 15) -> requests.Response | None:
+    """Fetch URL with fast retry on connection errors."""
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             resp = requests.get(url, headers=HEADERS, timeout=timeout)
             if resp.status_code == 429:  # Rate limited
-                wait = RETRY_BACKOFF * attempt * 2
+                wait = RETRY_BACKOFF * attempt
                 print(f"    Rate limited, waiting {wait}s...")
                 time.sleep(wait)
                 continue
@@ -60,7 +60,7 @@ def fetch_with_retry(url: str, timeout: int = 30) -> requests.Response | None:
                 print(f"    Connection error, retry {attempt}/{MAX_RETRIES} in {wait}s...")
                 time.sleep(wait)
             else:
-                print(f"    ✗ Failed after {MAX_RETRIES} attempts: {e}")
+                print(f"    ✗ Skipping: {type(e).__name__}")
                 return None
     return None
 
@@ -228,7 +228,7 @@ def backfill_product(product_url: str, max_snapshots: int = 50) -> list[dict]:
         if (i + 1) % 10 == 0:
             print(f"  Progress: {i + 1}/{len(snapshots)} snapshots, {len(prices)} prices found")
 
-        time.sleep(1.5)  # Be nice to archive.org (reduced from 2s)
+        time.sleep(1)  # Be nice to archive.org
 
     return prices
 
