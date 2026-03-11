@@ -1,0 +1,69 @@
+name: Deploy Viewer to GitHub Pages
+
+on:
+  # Trigger after backfill workflows complete
+  workflow_run:
+    workflows:
+      - "Wayback Backfill"
+      - "Wayback go.hf Backfill"
+      - "Daily Deal Scrape"
+    types: [completed]
+  workflow_dispatch: # Manual trigger
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only allow one deployment at a time
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # Only deploy if the triggering workflow succeeded (or manual trigger)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Restore database from artifact
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: toolpulse-db
+          path: data/
+          if_no_artifact_found: fail
+          search_artifacts: true
+
+      - name: Generate viewer.html
+        run: python3 generate_viewer.py
+
+      - name: Prepare Pages directory
+        run: |
+          mkdir -p _site
+          cp viewer.html _site/index.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
