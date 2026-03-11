@@ -2,14 +2,14 @@ name: Wayback go.hf Backfill
 
 on:
   schedule:
-    # Run every 2 hours — 2 parallel slices x 15 URLs each
-    - cron: '17 */2 * * *'
+    # Run hourly — 4 parallel slices x 30 URLs = 120 URLs/hour = 2880/day
+    - cron: '17 * * * *'
   workflow_dispatch:
     inputs:
       batch_size:
         description: 'Number of URLs to backfill per slice per run'
         required: false
-        default: '15'
+        default: '30'
 
 permissions:
   contents: write
@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        slice: [0, 1]
+        slice: [0, 1, 2, 3]
 
     steps:
       - name: Checkout
@@ -44,7 +44,8 @@ jobs:
           path: data/
           if_no_artifact_found: warn
           search_artifacts: true
-          workflow: daily-scrape.yml
+          workflow: wayback-backfill.yml
+          workflow_conclusion: ''
 
       # Download ALL slice progress files
       - name: Restore go.hf backfill progress (slice 0)
@@ -67,7 +68,26 @@ jobs:
           search_artifacts: true
           workflow: wayback-go-hf-backfill.yml
 
-      # Also restore legacy progress file (from before slicing was added)
+      - name: Restore go.hf backfill progress (slice 2)
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: go-hf-backfill-progress-slice-2
+          path: data/
+          if_no_artifact_found: warn
+          search_artifacts: true
+          workflow: wayback-go-hf-backfill.yml
+
+      - name: Restore go.hf backfill progress (slice 3)
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: go-hf-backfill-progress-slice-3
+          path: data/
+          if_no_artifact_found: warn
+          search_artifacts: true
+          workflow: wayback-go-hf-backfill.yml
+
       - name: Restore legacy go.hf backfill progress
         continue-on-error: true
         uses: dawidd6/action-download-artifact@v6
@@ -80,9 +100,10 @@ jobs:
 
       - name: Run go.hf Wayback backfill (slice ${{ matrix.slice }})
         env:
-          BATCH_SIZE: ${{ github.event.inputs.batch_size || '15' }}
+          BATCH_SIZE: ${{ github.event.inputs.batch_size || '30' }}
           SLICE: ${{ matrix.slice }}
-        run: python3 scrapers/wayback_go_hf.py --db --batch-size $BATCH_SIZE --slice $SLICE --total-slices 2
+          WAYBACK_PROXY_URL: https://toolpulse-wayback.charlesrogers.workers.dev/wayback-proxy
+        run: python3 scrapers/wayback_go_hf.py --db --batch-size $BATCH_SIZE --slice $SLICE --total-slices 4
 
       - name: Show database stats
         if: matrix.slice == 0

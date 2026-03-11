@@ -40,8 +40,11 @@ HEADERS = {
 CDX_API = "https://web.archive.org/cdx/search/cdx"
 WAYBACK_BASE = "https://web.archive.org/web"
 
-MAX_RETRIES = 3
-RETRY_BACKOFF = 5  # seconds, multiplied by attempt number
+MAX_RETRIES = 2
+RETRY_BACKOFF = 3  # seconds, multiplied by attempt number
+
+# Optional: route archive.org requests through a Cloudflare Worker proxy
+WAYBACK_PROXY_URL = os.environ.get("WAYBACK_PROXY_URL", "")
 
 # Same regex as go_hf_scraper.py — matches deal alt text on go.harborfreight.com
 ALT_PATTERN = re.compile(
@@ -53,13 +56,22 @@ ALT_PATTERN = re.compile(
 
 # ── HTTP with retry ──────────────────────────────────────────────────────────
 
-def fetch_with_retry(url: str, timeout: int = 30) -> requests.Response | None:
-    """Fetch URL with exponential backoff retry on connection errors."""
+def _maybe_proxy_url(url: str) -> str:
+    """Route archive.org requests through CF Worker proxy if configured."""
+    if WAYBACK_PROXY_URL and url.startswith("https://web.archive.org/"):
+        from urllib.parse import quote
+        return f"{WAYBACK_PROXY_URL}?url={quote(url, safe='')}"
+    return url
+
+
+def fetch_with_retry(url: str, timeout: int = 15) -> requests.Response | None:
+    """Fetch URL with fast retry on connection errors."""
+    actual_url = _maybe_proxy_url(url)
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = requests.get(url, headers=HEADERS, timeout=timeout)
+            resp = requests.get(actual_url, headers=HEADERS, timeout=timeout)
             if resp.status_code == 429:  # Rate limited
-                wait = RETRY_BACKOFF * attempt * 2
+                wait = RETRY_BACKOFF * attempt
                 print(f"    Rate limited, waiting {wait}s...")
                 time.sleep(wait)
                 continue
@@ -70,7 +82,7 @@ def fetch_with_retry(url: str, timeout: int = 30) -> requests.Response | None:
                 print(f"    Connection error, retry {attempt}/{MAX_RETRIES} in {wait}s...")
                 time.sleep(wait)
             else:
-                print(f"    Failed after {MAX_RETRIES} attempts: {e}")
+                print(f"    Skipping: {type(e).__name__}")
                 return None
     return None
 
@@ -415,7 +427,7 @@ def backfill_go_hf_url(url: str, max_snapshots: int = 20) -> list[dict]:
 def main():
     save_db = "--db" in sys.argv
 
-    batch_size = 15
+    batch_size = 30
     if "--batch-size" in sys.argv:
         idx = sys.argv.index("--batch-size")
         if idx + 1 < len(sys.argv):
@@ -557,7 +569,15 @@ def main():
     # Track this slice's newly completed URLs separately
     slice_completed = set(progress.get("completed_urls", []))
 
+    start_time = time.time()
+    MAX_RUN_SECONDS = 25 * 60  # Exit cleanly before 30-min job timeout
+
     for i, entry in enumerate(batch):
+        elapsed = time.time() - start_time
+        if elapsed > MAX_RUN_SECONDS:
+            print(f"\n  Time limit reached ({elapsed/60:.1f}min), stopping to save progress")
+            break
+
         url = entry["url"]
         page_type = entry["type"]
 
