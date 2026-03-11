@@ -22,8 +22,7 @@ concurrency:
 
 jobs:
   deploy:
-    # Only deploy if the triggering workflow succeeded (or manual trigger)
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # Deploy on manual trigger or after any backfill run (even cancelled — slice 0 may have uploaded DB)
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -47,6 +46,8 @@ jobs:
           path: data/
           if_no_artifact_found: fail
           search_artifacts: true
+          workflow: wayback-backfill.yml
+          workflow_conclusion: ''
 
       - name: Generate viewer.html
         run: python3 generate_viewer.py

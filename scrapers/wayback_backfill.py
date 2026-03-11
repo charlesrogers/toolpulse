@@ -40,14 +40,31 @@ WAYBACK_BASE = "https://web.archive.org/web"
 MAX_RETRIES = 2
 RETRY_BACKOFF = 3  # seconds, multiplied by attempt number
 
+# Optional: route archive.org requests through a Cloudflare Worker proxy
+# Set WAYBACK_PROXY_URL to e.g. "https://toolpulse-wayback.charlesrogers.workers.dev/wayback-proxy"
+WAYBACK_PROXY_URL = os.environ.get("WAYBACK_PROXY_URL", "")
+
 
 # ── HTTP with retry ──────────────────────────────────────────────────────────
 
+def _maybe_proxy_url(url: str) -> str:
+    """If WAYBACK_PROXY_URL is set and url is a web.archive.org URL, route through the proxy."""
+    if WAYBACK_PROXY_URL and url.startswith("https://web.archive.org/"):
+        from urllib.parse import quote
+        return f"{WAYBACK_PROXY_URL}?url={quote(url, safe='')}"
+    return url
+
+
 def fetch_with_retry(url: str, timeout: int = 15) -> requests.Response | None:
-    """Fetch URL with fast retry on connection errors."""
+    """Fetch URL with fast retry on connection errors.
+
+    When WAYBACK_PROXY_URL is set, archive.org requests are routed through
+    the Cloudflare Worker proxy for better IP reputation / rate-limit avoidance.
+    """
+    actual_url = _maybe_proxy_url(url)
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = requests.get(url, headers=HEADERS, timeout=timeout)
+            resp = requests.get(actual_url, headers=HEADERS, timeout=timeout)
             if resp.status_code == 429:  # Rate limited
                 wait = RETRY_BACKOFF * attempt
                 print(f"    Rate limited, waiting {wait}s...")

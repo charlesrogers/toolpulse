@@ -121,6 +121,7 @@ jobs:
         env:
           BATCH_SIZE: ${{ github.event.inputs.batch_size || '30' }}
           SLICE: ${{ matrix.slice }}
+          WAYBACK_PROXY_URL: https://toolpulse-wayback.charlesrogers.workers.dev/wayback-proxy
         run: python3 scrapers/wayback_batch.py --db --batch-size $BATCH_SIZE --slice $SLICE --total-slices 3
 
       - name: Show database stats

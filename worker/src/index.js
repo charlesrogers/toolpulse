@@ -757,6 +757,48 @@ async function handleRequest(request, env) {
     return Response.json({ status: "batch complete", progress });
   }
 
+  // GET /wayback-proxy?url=<encoded_url> — proxy requests to web.archive.org
+  if (url.pathname === "/wayback-proxy" && request.method === "GET") {
+    const targetUrl = url.searchParams.get("url");
+    if (!targetUrl) {
+      return Response.json({ error: "Missing ?url= parameter" }, { status: 400 });
+    }
+    if (!targetUrl.startsWith("https://web.archive.org/")) {
+      return Response.json(
+        { error: "Only https://web.archive.org/ URLs are allowed" },
+        { status: 403 }
+      );
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+      const upstream = await fetch(targetUrl, {
+        headers: FETCH_HEADERS,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      const body = await upstream.arrayBuffer();
+      const responseHeaders = new Headers();
+      const ct = upstream.headers.get("content-type");
+      if (ct) responseHeaders.set("Content-Type", ct);
+      responseHeaders.set("X-Proxied-Status", String(upstream.status));
+
+      return new Response(body, {
+        status: upstream.status,
+        headers: responseHeaders,
+      });
+    } catch (e) {
+      const status = e.name === "AbortError" ? 504 : 502;
+      return Response.json(
+        { error: e.name === "AbortError" ? "Upstream timeout (25s)" : e.message },
+        { status }
+      );
+    }
+  }
+
   // Default: show help
   return Response.json({
     service: "ToolPulse Wayback Worker",
@@ -771,6 +813,7 @@ async function handleRequest(request, env) {
       "GET /run": "Manually trigger a cron batch (alternates product/go.hf)",
       "GET /run-go-hf": "Manually trigger a go.hf batch",
       "GET /test": "Diagnostic: test a single Wayback fetch",
+      "GET /wayback-proxy?url=": "Proxy requests to web.archive.org (URL must start with https://web.archive.org/)",
     },
   });
 }
