@@ -2,5 +2,8 @@ __pycache__/
 *.pyc
 data/*.db
 data/*.json
+emails/
 logs/
 .env
+node_modules/
+worker/.wrangler/

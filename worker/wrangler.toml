@@ -1,0 +1,12 @@
+name = "toolpulse-wayback"
+main = "src/index.js"
+compatibility_date = "2024-09-25"
+
+# Run every 6 hours — processes a batch of SKUs per invocation
+[triggers]
+crons = ["23 */6 * * *"]
+
+# KV namespace for tracking progress and storing results
+[[kv_namespaces]]
+binding = "TOOLPULSE_KV"
+id = "" # Fill in after: wrangler kv namespace create TOOLPULSE_KV

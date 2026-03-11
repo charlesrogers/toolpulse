@@ -1,0 +1,57 @@
+name: Daily Deal Scrape
+
+on:
+  schedule:
+    # 7:13 AM Mountain Time ≈ 1:13 PM UTC (MST = UTC-7)
+    - cron: '13 13 * * *'
+  workflow_dispatch: # Manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 lxml
+
+      - name: Restore database from artifact
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: toolpulse-db
+          path: data/
+          if_no_artifact_found: warn
+          search_artifacts: true
+          workflow: daily-scrape.yml
+
+      - name: Run deals scraper
+        run: python3 scrapers/go_hf_scraper.py --detail --db
+
+      - name: Show database stats
+        run: python3 db.py
+
+      - name: Upload database artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolpulse-db
+          path: data/toolpulse.db
+          retention-days: 90
+          overwrite: true
+
+      - name: Upload deals JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: deals-${{ github.run_id }}
+          path: data/deals_*.json
+          retention-days: 30
