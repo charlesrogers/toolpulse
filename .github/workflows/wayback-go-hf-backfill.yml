@@ -2,14 +2,14 @@ name: Wayback go.hf Backfill
 
 on:
   schedule:
-    # Run 2x daily — separate from product page backfill
-    - cron: '17 5,17 * * *'
+    # Run every 2 hours — 2 parallel slices x 15 URLs each
+    - cron: '17 */2 * * *'
   workflow_dispatch:
     inputs:
       batch_size:
-        description: 'Number of URLs to backfill per run'
+        description: 'Number of URLs to backfill per slice per run'
         required: false
-        default: '20'
+        default: '15'
 
 permissions:
   contents: write
@@ -19,6 +19,10 @@ jobs:
   backfill:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: [0, 1]
 
     steps:
       - name: Checkout
@@ -42,7 +46,29 @@ jobs:
           search_artifacts: true
           workflow: daily-scrape.yml
 
-      - name: Restore go.hf backfill progress
+      # Download ALL slice progress files
+      - name: Restore go.hf backfill progress (slice 0)
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: go-hf-backfill-progress-slice-0
+          path: data/
+          if_no_artifact_found: warn
+          search_artifacts: true
+          workflow: wayback-go-hf-backfill.yml
+
+      - name: Restore go.hf backfill progress (slice 1)
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: go-hf-backfill-progress-slice-1
+          path: data/
+          if_no_artifact_found: warn
+          search_artifacts: true
+          workflow: wayback-go-hf-backfill.yml
+
+      # Also restore legacy progress file (from before slicing was added)
+      - name: Restore legacy go.hf backfill progress
         continue-on-error: true
         uses: dawidd6/action-download-artifact@v6
         with:
@@ -52,15 +78,19 @@ jobs:
           search_artifacts: true
           workflow: wayback-go-hf-backfill.yml
 
-      - name: Run go.hf Wayback backfill
+      - name: Run go.hf Wayback backfill (slice ${{ matrix.slice }})
         env:
-          BATCH_SIZE: ${{ github.event.inputs.batch_size || '20' }}
-        run: python3 scrapers/wayback_go_hf.py --db --batch-size $BATCH_SIZE
+          BATCH_SIZE: ${{ github.event.inputs.batch_size || '15' }}
+          SLICE: ${{ matrix.slice }}
+        run: python3 scrapers/wayback_go_hf.py --db --batch-size $BATCH_SIZE --slice $SLICE --total-slices 2
 
       - name: Show database stats
+        if: matrix.slice == 0
         run: python3 db.py
 
+      # Only slice 0 uploads the database to avoid conflicts
       - name: Upload database
+        if: matrix.slice == 0
         uses: actions/upload-artifact@v4
         with:
           name: toolpulse-db
@@ -68,10 +98,10 @@ jobs:
           retention-days: 90
           overwrite: true
 
-      - name: Upload go.hf backfill progress
+      - name: Upload go.hf backfill progress (slice ${{ matrix.slice }})
         uses: actions/upload-artifact@v4
         with:
-          name: go-hf-backfill-progress
-          path: data/go_hf_backfill_progress.json
+          name: go-hf-backfill-progress-slice-${{ matrix.slice }}
+          path: data/go_hf_backfill_progress_${{ matrix.slice }}.json
           retention-days: 90
           overwrite: true

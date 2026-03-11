@@ -2,14 +2,14 @@ name: Wayback Backfill
 
 on:
   schedule:
-    # Run 4x daily to speed through the backlog
-    - cron: '47 2,8,14,20 * * *'
+    # Run hourly — 3 parallel slices x 15 products = 45/hour = 1080/day
+    - cron: '47 * * * *'
   workflow_dispatch:
     inputs:
       batch_size:
-        description: 'Number of products to backfill per run'
+        description: 'Number of products to backfill per slice per run'
         required: false
-        default: '30'
+        default: '15'
 
 permissions:
   contents: write
@@ -19,6 +19,10 @@ jobs:
   backfill:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: [0, 1, 2]
 
     steps:
       - name: Checkout
@@ -52,7 +56,39 @@ jobs:
           search_artifacts: true
           workflow: discover-products.yml
 
-      - name: Restore backfill progress
+      # Download ALL slice progress files so each slice knows what others have done
+      - name: Restore backfill progress (slice 0)
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: backfill-progress-slice-0
+          path: data/
+          if_no_artifact_found: warn
+          search_artifacts: true
+          workflow: wayback-backfill.yml
+
+      - name: Restore backfill progress (slice 1)
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: backfill-progress-slice-1
+          path: data/
+          if_no_artifact_found: warn
+          search_artifacts: true
+          workflow: wayback-backfill.yml
+
+      - name: Restore backfill progress (slice 2)
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: backfill-progress-slice-2
+          path: data/
+          if_no_artifact_found: warn
+          search_artifacts: true
+          workflow: wayback-backfill.yml
+
+      # Also restore legacy progress file (from before slicing was added)
+      - name: Restore legacy backfill progress
         continue-on-error: true
         uses: dawidd6/action-download-artifact@v6
         with:
@@ -71,15 +107,29 @@ jobs:
           if_no_artifact_found: warn
           search_artifacts: true
 
-      - name: Run Wayback backfill batch
+      - name: Restore CDX snapshot cache
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: cdx-snapshot-cache
+          path: data/
+          if_no_artifact_found: warn
+          search_artifacts: true
+          workflow: wayback-backfill.yml
+
+      - name: Run Wayback backfill batch (slice ${{ matrix.slice }})
         env:
-          BATCH_SIZE: ${{ github.event.inputs.batch_size || '30' }}
-        run: python3 scrapers/wayback_batch.py --db --batch-size $BATCH_SIZE
+          BATCH_SIZE: ${{ github.event.inputs.batch_size || '15' }}
+          SLICE: ${{ matrix.slice }}
+        run: python3 scrapers/wayback_batch.py --db --batch-size $BATCH_SIZE --slice $SLICE --total-slices 3
 
       - name: Show database stats
+        if: matrix.slice == 0
         run: python3 db.py
 
+      # Only slice 0 uploads the database to avoid conflicts
       - name: Upload database artifact
+        if: matrix.slice == 0
         uses: actions/upload-artifact@v4
         with:
           name: toolpulse-db
@@ -87,10 +137,19 @@ jobs:
           retention-days: 90
           overwrite: true
 
-      - name: Upload backfill progress
+      - name: Upload backfill progress (slice ${{ matrix.slice }})
         uses: actions/upload-artifact@v4
         with:
-          name: backfill-progress
-          path: data/backfill_progress.json
+          name: backfill-progress-slice-${{ matrix.slice }}
+          path: data/backfill_progress_${{ matrix.slice }}.json
+          retention-days: 90
+          overwrite: true
+
+      - name: Upload CDX snapshot cache
+        if: matrix.slice == 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdx-snapshot-cache
+          path: data/cdx_snapshot_cache.json
           retention-days: 90
           overwrite: true

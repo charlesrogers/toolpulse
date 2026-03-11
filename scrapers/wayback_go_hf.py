@@ -6,13 +6,17 @@ Uses the Internet Archive CDX API to find archived go.harborfreight.com pages
 (grid listings, individual coupons, email promos), then extracts historical
 deal/coupon data using the same ALT_PATTERN regex as go_hf_scraper.py.
 
+Supports parallel slicing: multiple jobs can run simultaneously, each processing
+a different slice of the pending queue (--slice N --total-slices M).
+
 Usage:
     python3 wayback_go_hf.py                          # Dry run, JSON only
     python3 wayback_go_hf.py --db                     # Also save deals to SQLite
-    python3 wayback_go_hf.py --db --batch-size 50     # Process 50 URLs per run
+    python3 wayback_go_hf.py --db --batch-size 15 --slice 0 --total-slices 2
     python3 wayback_go_hf.py --url "https://..."      # Single URL mode
 """
 
+import glob as glob_module
 import json
 import os
 import re
@@ -38,8 +42,6 @@ WAYBACK_BASE = "https://web.archive.org/web"
 
 MAX_RETRIES = 3
 RETRY_BACKOFF = 5  # seconds, multiplied by attempt number
-
-PROGRESS_FILE = os.path.join(DATA_DIR, "go_hf_backfill_progress.json")
 
 # Same regex as go_hf_scraper.py — matches deal alt text on go.harborfreight.com
 ALT_PATTERN = re.compile(
@@ -73,12 +75,56 @@ def fetch_with_retry(url: str, timeout: int = 30) -> requests.Response | None:
     return None
 
 
-# ── Progress tracking ────────────────────────────────────────────────────────
+# ── Slice-aware progress tracking ────────────────────────────────────────────
 
-def load_progress() -> dict:
-    """Load backfill progress from JSON file."""
-    if os.path.exists(PROGRESS_FILE):
-        with open(PROGRESS_FILE) as f:
+def progress_file_for_slice(slice_idx: int | None) -> str:
+    """Return the progress file path for a given slice."""
+    if slice_idx is not None:
+        return os.path.join(DATA_DIR, f"go_hf_backfill_progress_{slice_idx}.json")
+    return os.path.join(DATA_DIR, "go_hf_backfill_progress.json")
+
+
+def load_all_completed_urls() -> set[str]:
+    """Load completed URLs from ALL slice progress files + legacy file.
+
+    This ensures no slice redoes work that another slice already completed.
+    """
+    completed = set()
+
+    # Legacy progress file (from before slicing)
+    legacy_file = os.path.join(DATA_DIR, "go_hf_backfill_progress.json")
+    if os.path.exists(legacy_file):
+        try:
+            with open(legacy_file) as f:
+                data = json.load(f)
+            urls = data.get("completed_urls", [])
+            completed.update(urls)
+            print(f"  Loaded legacy progress: {len(urls)} URLs")
+        except Exception as e:
+            print(f"  Warning: could not read legacy progress: {e}")
+
+    # All slice progress files
+    pattern = os.path.join(DATA_DIR, "go_hf_backfill_progress_*.json")
+    for path in sorted(glob_module.glob(pattern)):
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            urls = data.get("completed_urls", [])
+            completed.update(urls)
+            basename = os.path.basename(path)
+            print(f"  Loaded {basename}: {len(urls)} URLs")
+        except Exception as e:
+            print(f"  Warning: could not read {path}: {e}")
+
+    print(f"  Total completed across all slices: {len(completed)} URLs")
+    return completed
+
+
+def load_progress(slice_idx: int | None) -> dict:
+    """Load backfill progress for a specific slice."""
+    path = progress_file_for_slice(slice_idx)
+    if os.path.exists(path):
+        with open(path) as f:
             return json.load(f)
     return {
         "completed_urls": [],
@@ -88,11 +134,12 @@ def load_progress() -> dict:
     }
 
 
-def save_progress(progress: dict):
-    """Save backfill progress to JSON file."""
-    with open(PROGRESS_FILE, "w") as f:
+def save_progress(progress: dict, slice_idx: int | None):
+    """Save backfill progress for a specific slice."""
+    path = progress_file_for_slice(slice_idx)
+    with open(path, "w") as f:
         json.dump(progress, f, indent=2)
-    print(f"  Progress saved: {len(progress['completed_urls'])} URLs completed")
+    print(f"  Progress saved to {os.path.basename(path)}: {len(progress['completed_urls'])} URLs completed")
 
 
 # ── CDX API: Discover archived go.harborfreight.com pages ────────────────────
@@ -368,15 +415,31 @@ def backfill_go_hf_url(url: str, max_snapshots: int = 20) -> list[dict]:
 def main():
     save_db = "--db" in sys.argv
 
-    batch_size = 20
+    batch_size = 15
     if "--batch-size" in sys.argv:
         idx = sys.argv.index("--batch-size")
         if idx + 1 < len(sys.argv):
             batch_size = int(sys.argv[idx + 1])
 
+    # Slice parameters for parallel execution
+    slice_idx = None
+    total_slices = 1
+
+    if "--slice" in sys.argv:
+        idx = sys.argv.index("--slice")
+        if idx + 1 < len(sys.argv):
+            slice_idx = int(sys.argv[idx + 1])
+
+    if "--total-slices" in sys.argv:
+        idx = sys.argv.index("--total-slices")
+        if idx + 1 < len(sys.argv):
+            total_slices = int(sys.argv[idx + 1])
+
     print("ToolPulse: Wayback Machine go.harborfreight.com Backfill")
     print(f"  Save to DB: {save_db}")
     print(f"  Batch size: {batch_size}")
+    if slice_idx is not None:
+        print(f"  Slice: {slice_idx} of {total_slices}")
     print()
 
     # ── Single URL mode ──────────────────────────────────────────────────────
@@ -407,14 +470,16 @@ def main():
 
     # ── Batch mode ───────────────────────────────────────────────────────────
 
-    # Load progress
-    progress = load_progress()
-    completed_urls = set(progress.get("completed_urls", []))
+    # Load completed URLs from ALL slices (so we don't redo work)
+    print("Loading completed URLs from all slices...")
+    completed_urls = load_all_completed_urls()
+
+    # Load this slice's own progress for its metadata
+    progress = load_progress(slice_idx)
     total_deals_found = progress.get("total_deals_found", 0)
     total_snapshots = progress.get("total_snapshots_processed", 0)
 
-    print(f"  Previously completed: {len(completed_urls)} URLs")
-    print(f"  Previously found: {total_deals_found} deals")
+    print(f"  Previously found (this slice): {total_deals_found} deals")
 
     # Step 1: Discover all archived URLs
     print("\nStep 1: Discovering archived go.harborfreight.com URLs...")
@@ -426,10 +491,23 @@ def main():
 
     # Filter out completed URLs
     pending = [entry for entry in all_url_entries if entry["url"] not in completed_urls]
-    print(f"\n  Pending URLs: {len(pending)} (of {len(all_url_entries)} total)")
+    print(f"\n  Pending URLs (all slices): {len(pending)} (of {len(all_url_entries)} total)")
 
     if not pending:
         print("\nAll URLs have been backfilled!")
+        return
+
+    # Apply slicing: each slice only processes items where index % total_slices == slice_idx
+    if slice_idx is not None and total_slices > 1:
+        sliced_pending = [
+            entry for i, entry in enumerate(pending)
+            if i % total_slices == slice_idx
+        ]
+        print(f"  This slice's share: {len(sliced_pending)} URLs (slice {slice_idx}/{total_slices})")
+        pending = sliced_pending
+
+    if not pending:
+        print(f"\nNo URLs for slice {slice_idx}!")
         return
 
     # Take this batch
@@ -458,6 +536,8 @@ def main():
     batch_deals_total = 0
     batch_inserted = 0
     batch_updated = 0
+    # Track this slice's newly completed URLs separately
+    slice_completed = set(progress.get("completed_urls", []))
 
     for i, entry in enumerate(batch):
         url = entry["url"]
@@ -480,29 +560,31 @@ def main():
                     print(f"  -> DB: {ins} inserted, {upd} updated")
 
             completed_urls.add(url)
+            slice_completed.add(url)
             total_snapshots += 1
 
         except Exception as e:
             print(f"  ERROR processing {url}: {e}")
             completed_urls.add(url)  # Don't retry failed URLs forever
+            slice_completed.add(url)
 
         # Save progress every 5 URLs
         if (i + 1) % 5 == 0:
-            progress["completed_urls"] = list(completed_urls)
+            progress["completed_urls"] = list(slice_completed)
             progress["total_deals_found"] = total_deals_found
             progress["total_snapshots_processed"] = total_snapshots
             progress["last_run"] = datetime.now(timezone.utc).isoformat()
-            save_progress(progress)
+            save_progress(progress, slice_idx)
             print(f"\n  --- Batch progress: {i+1}/{len(batch)} URLs ---")
 
         time.sleep(1)  # Pause between URLs
 
     # Final progress save
-    progress["completed_urls"] = list(completed_urls)
+    progress["completed_urls"] = list(slice_completed)
     progress["total_deals_found"] = total_deals_found
     progress["total_snapshots_processed"] = total_snapshots
     progress["last_run"] = datetime.now(timezone.utc).isoformat()
-    save_progress(progress)
+    save_progress(progress, slice_idx)
 
     # Save deals JSON for this run
     outfile = os.path.join(
@@ -513,6 +595,8 @@ def main():
     summary = {
         "run_date": datetime.now(timezone.utc).isoformat(),
         "batch_size": len(batch),
+        "slice": slice_idx,
+        "total_slices": total_slices,
         "deals_found": batch_deals_total,
         "db_inserted": batch_inserted,
         "db_updated": batch_updated,
@@ -533,14 +617,15 @@ def main():
     runs_needed = (remaining + batch_size - 1) // batch_size if remaining > 0 else 0
 
     print(f"\n{'='*60}")
-    print(f"Batch complete:")
+    print(f"Batch complete (slice {slice_idx if slice_idx is not None else 'N/A'}):")
     print(f"  URLs processed this run: {len(batch)}")
     print(f"  Deals found this run:    {batch_deals_total}")
     if save_db:
         print(f"  DB inserts:              {batch_inserted}")
         print(f"  DB updates:              {batch_updated}")
-    print(f"  Total completed URLs:    {len(completed_urls)}")
-    print(f"  Remaining URLs:          {remaining}")
+    print(f"  Total completed (this slice): {len(slice_completed)}")
+    print(f"  Total completed (all slices): {len(completed_urls)}")
+    print(f"  Remaining (this slice):  {remaining}")
     print(f"  Estimated runs left:     {runs_needed}")
 
 
