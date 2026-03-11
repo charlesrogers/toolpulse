@@ -1,0 +1,87 @@
+name: Wayback Backfill
+
+on:
+  schedule:
+    # Run 4x daily to speed through the backlog
+    - cron: '47 2,8,14,20 * * *'
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: 'Number of products to backfill per run'
+        required: false
+        default: '30'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 lxml
+
+      - name: Restore database from artifact
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: toolpulse-db
+          path: data/
+          if_no_artifact_found: warn
+          search_artifacts: true
+          workflow: daily-scrape.yml
+
+      - name: Restore product URLs
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: product-urls
+          path: data/
+          if_no_artifact_found: warn
+          search_artifacts: true
+          workflow: discover-products.yml
+
+      - name: Restore backfill progress
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: backfill-progress
+          path: data/
+          if_no_artifact_found: warn
+          search_artifacts: true
+          workflow: wayback-backfill.yml
+
+      - name: Run Wayback backfill batch
+        env:
+          BATCH_SIZE: ${{ github.event.inputs.batch_size || '30' }}
+        run: python3 scrapers/wayback_batch.py --db --batch-size $BATCH_SIZE
+
+      - name: Show database stats
+        run: python3 db.py
+
+      - name: Upload database artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolpulse-db
+          path: data/toolpulse.db
+          retention-days: 90
+          overwrite: true
+
+      - name: Upload backfill progress
+        uses: actions/upload-artifact@v4
+        with:
+          name: backfill-progress
+          path: data/backfill_progress.json
+          retention-days: 90
+          overwrite: true
