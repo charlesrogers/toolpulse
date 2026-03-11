@@ -34,6 +34,8 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
+import requests
+
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 EMAIL_DIR = os.path.join(BASE_DIR, "emails")
@@ -161,14 +163,44 @@ def extract_text_body(msg: email.message.EmailMessage) -> str:
     return ""
 
 
-def parse_hf_email(msg: email.message.EmailMessage) -> dict:
+def resolve_tracking_links(html: str, max_links: int = 30) -> tuple[list[str], list[str]]:
+    """Resolve clicks.harborfreight.com tracking redirects to real URLs.
+
+    Returns (go_hf_links, product_links).
+    Only works for recent emails — old tracking links expire.
+    """
+    tracking_links = re.findall(
+        r'href="(https?://clicks\.harborfreight\.com/[^"]+)"', html
+    )
+    tracking_links = list(dict.fromkeys(tracking_links))[:max_links]
+
+    go_hf_links = []
+    product_links = []
+
+    for link in tracking_links:
+        try:
+            resp = requests.head(link, allow_redirects=True, timeout=8)
+            final = resp.url.split("?")[0]
+
+            if "go.harborfreight.com/coupons/" in final or "go.harborfreight.com/emails/" in final:
+                go_hf_links.append(final)
+            elif re.search(r"harborfreight\.com/.*-\d{5,}\.html", final):
+                product_links.append(final)
+        except Exception:
+            pass
+
+    return list(set(go_hf_links)), list(set(product_links))
+
+
+def parse_hf_email(msg: email.message.EmailMessage, resolve_links: bool = False) -> dict:
     """Parse a Harbor Freight email for deal data.
 
-    HF emails are heavily image-based, but we can extract:
-    - Subject line (often has the deal headline)
-    - "View in browser" link (points to go.harborfreight.com)
+    HF emails are heavily image-based. We extract:
+    - Subject line (deal headline)
+    - Tracking links → resolved to go.harborfreight.com coupon/deal pages
     - Any text content with item numbers, prices, coupon codes
-    - Links to product pages and coupon pages
+
+    Set resolve_links=True to follow tracking redirects (slow, ~8s per link).
     """
     subject = msg.get("Subject", "")
     from_addr = msg.get("From", "")
@@ -194,17 +226,25 @@ def parse_hf_email(msg: email.message.EmailMessage) -> dict:
 
     # Extract all links from HTML
     if html:
-        # Find go.harborfreight.com links (these are the deal/coupon pages)
+        # Direct go.harborfreight.com links (rare in emails, common in web versions)
         go_hf_links = re.findall(
             r'href="(https?://go\.harborfreight\.com/[^"]+)"', html
         )
         result["links"] = list(set(go_hf_links))
 
-        # Find harborfreight.com product links
+        # Direct harborfreight.com product links
         product_links = re.findall(
             r'href="(https?://(?:www\.)?harborfreight\.com/[^"]*-\d{5,}\.html[^"]*)"', html
         )
         result["product_links"] = list(set(product_links))
+
+        # Resolve tracking redirects (clicks.harborfreight.com → real URLs)
+        if resolve_links:
+            resolved_go, resolved_products = resolve_tracking_links(html)
+            result["links"].extend(resolved_go)
+            result["product_links"].extend(resolved_products)
+            result["links"] = list(set(result["links"]))
+            result["product_links"] = list(set(result["product_links"]))
 
         # Try to find "View in Browser" link
         view_browser = re.findall(
@@ -278,6 +318,7 @@ def parse_hf_email(msg: email.message.EmailMessage) -> dict:
 def main():
     save_db = "--db" in sys.argv
     save_raw = "--save-raw" in sys.argv
+    do_resolve = "--resolve-links" in sys.argv
     since_date = None
     if "--since" in sys.argv:
         idx = sys.argv.index("--since")
@@ -319,7 +360,7 @@ def main():
         total_links = 0
 
         for i, msg in enumerate(messages):
-            parsed = parse_hf_email(msg)
+            parsed = parse_hf_email(msg, resolve_links=do_resolve)
             all_parsed.append(parsed)
             total_deals += len(parsed["deals"])
             total_links += len(parsed.get("links", []))

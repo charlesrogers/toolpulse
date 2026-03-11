@@ -1,0 +1,77 @@
+name: Discover Products (Sitemap)
+
+on:
+  workflow_dispatch: # Manual trigger
+  schedule:
+    # Weekly on Sundays at 3:17 AM UTC — refresh catalog
+    - cron: '17 3 * * 0'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 lxml
+
+      - name: Restore database from artifact
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: toolpulse-db
+          path: data/
+          if_no_artifact_found: warn
+          search_artifacts: true
+          workflow: daily-scrape.yml
+
+      - name: Download live sitemap + CDX discovery
+        run: python3 scrapers/discover_products.py --db
+
+      - name: Show stats
+        run: python3 db.py
+
+      - name: Upload database artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolpulse-db
+          path: data/toolpulse.db
+          retention-days: 90
+          overwrite: true
+
+      - name: Upload product URLs
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-urls
+          path: |
+            data/all_product_urls.json
+            data/product_urls.json
+          retention-days: 90
+          overwrite: true
+
+      - name: Seed Cloudflare Worker with URLs
+        if: env.WORKER_URL != ''
+        env:
+          WORKER_URL: ${{ vars.TOOLPULSE_WORKER_URL }}
+        run: |
+          # Send first 500 URLs to the Worker for Wayback backfill
+          python3 -c "
+          import json, requests
+          with open('data/product_urls.json') as f:
+              urls = json.load(f)
+          print(f'Seeding Worker with {min(500, len(urls))} of {len(urls)} URLs...')
+          resp = requests.post('${WORKER_URL}/seed', json={'urls': urls[:500]}, timeout=60)
+          print(resp.json())
+          "
