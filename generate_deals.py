@@ -357,6 +357,7 @@ a.coupon-link:hover {{ text-decoration: underline; }}
     <div class="subtitle">Generated {generated}</div>
   </div>
   <div class="nav">
+    <a href="current-sales.html">Current Sales</a>
     <a href="index.html">Products &amp; Prices</a>
   </div>
 </div>

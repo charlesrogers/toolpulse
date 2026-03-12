@@ -364,9 +364,15 @@ td.signal-cell {{ text-align: center; }}
 </head>
 <body>
 
-<div class="header">
-  <h1>ToolPulse — Harbor Freight Price Tracker</h1>
-  <div class="subtitle">Generated {generated}</div>
+<div class="header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+  <div>
+    <h1>ToolPulse — Harbor Freight Price Tracker</h1>
+    <div class="subtitle">Generated {generated}</div>
+  </div>
+  <div style="display:flex;gap:12px">
+    <a href="current-sales.html" style="color:#6c9fff;text-decoration:none;padding:6px 14px;border:1px solid #333;border-radius:6px;font-size:13px">Current Sales</a>
+    <a href="deals.html" style="color:#6c9fff;text-decoration:none;padding:6px 14px;border:1px solid #333;border-radius:6px;font-size:13px">Deal History</a>
+  </div>
 </div>
 
 <div class="stats-bar">
