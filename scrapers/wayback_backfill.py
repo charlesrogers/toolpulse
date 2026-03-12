@@ -18,6 +18,7 @@ import os
 import re
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -118,22 +119,14 @@ def find_snapshots(product_url: str, limit: int = 100) -> list[dict]:
 
 # ── Extract price from archived page ────────────────────────────────────────
 
-def extract_price_from_snapshot(timestamp: str, original_url: str) -> dict | None:
-    """Fetch an archived HF product page and extract price data."""
-    wayback_url = f"{WAYBACK_BASE}/{timestamp}id_/{original_url}"
+def parse_hf_product_page(html: str, url: str) -> dict | None:
+    """Parse an HF product page HTML and extract price/product data.
 
-    resp = fetch_with_retry(wayback_url)
-    if not resp or resp.status_code != 200:
-        return None
-
-    soup = BeautifulSoup(resp.text, "lxml")
-
-    result = {
-        "timestamp": timestamp,
-        "date": f"{timestamp[:4]}-{timestamp[4:6]}-{timestamp[6:8]}",
-        "source": "wayback",
-        "wayback_url": wayback_url,
-    }
+    Shared by both Wayback and live scraper. Returns dict with price, product_name,
+    sku, brand, in_stock, rating, review_count — or None if no price found.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    result = {}
 
     # Method 1: og:price:amount meta tag
     og_price = soup.find("meta", property="og:price:amount")
@@ -192,17 +185,39 @@ def extract_price_from_snapshot(timestamp: str, original_url: str) -> dict | Non
 
     # Extract SKU from URL
     if not result.get("sku"):
-        sku_match = re.search(r"-(\d{5,})\.html", original_url)
+        sku_match = re.search(r"-(\d{5,})\.html", url)
         if sku_match:
             result["sku"] = sku_match.group(1)
 
     return result if result.get("price") is not None else None
 
 
+def extract_price_from_snapshot(timestamp: str, original_url: str) -> dict | None:
+    """Fetch an archived HF product page and extract price data."""
+    wayback_url = f"{WAYBACK_BASE}/{timestamp}id_/{original_url}"
+
+    resp = fetch_with_retry(wayback_url)
+    if not resp or resp.status_code != 200:
+        return None
+
+    result = parse_hf_product_page(resp.text, original_url)
+    if result is None:
+        return None
+
+    result["timestamp"] = timestamp
+    result["date"] = f"{timestamp[:4]}-{timestamp[4:6]}-{timestamp[6:8]}"
+    result["source"] = "wayback"
+    result["wayback_url"] = wayback_url
+    return result
+
+
 # ── Backfill a single product ────────────────────────────────────────────────
 
-def backfill_product(product_url: str, max_snapshots: int = 50) -> list[dict]:
-    """Backfill price history for a single product URL via Wayback Machine."""
+def backfill_product(product_url: str, max_snapshots: int = 50, max_workers: int = 5) -> list[dict]:
+    """Backfill price history for a single product URL via Wayback Machine.
+
+    Uses ThreadPoolExecutor to fetch multiple snapshots in parallel for speed.
+    """
     sku_match = re.search(r"-(\d{5,})\.html", product_url)
     sku = sku_match.group(1) if sku_match else "unknown"
 
@@ -215,15 +230,31 @@ def backfill_product(product_url: str, max_snapshots: int = 50) -> list[dict]:
     if not snapshots:
         return []
 
+    # Fetch snapshots in parallel
+    results = [None] * len(snapshots)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_idx = {}
+        for i, snap in enumerate(snapshots):
+            future = executor.submit(extract_price_from_snapshot, snap["timestamp"], snap["original"])
+            future_to_idx[future] = i
+
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            try:
+                results[idx] = future.result()
+            except Exception:
+                results[idx] = None
+
+    # Process results in order
     prices = []
     last_price = None
     consecutive_failures = 0
 
-    for i, snap in enumerate(snapshots):
+    for i, (snap, price_data) in enumerate(zip(snapshots, results)):
         ts = snap["timestamp"]
         date_str = f"{ts[:4]}-{ts[4:6]}-{ts[6:8]}"
 
-        price_data = extract_price_from_snapshot(ts, snap["original"])
         if price_data:
             consecutive_failures = 0
             current_price = price_data.get("price")
@@ -237,15 +268,12 @@ def backfill_product(product_url: str, max_snapshots: int = 50) -> list[dict]:
         else:
             consecutive_failures += 1
             print(f"  {date_str}: (no price found)")
-            # If we've failed 5 in a row, this URL probably never had structured data
             if consecutive_failures >= 5 and not prices:
                 print(f"  Skipping remaining — no structured price data found")
                 break
 
         if (i + 1) % 10 == 0:
             print(f"  Progress: {i + 1}/{len(snapshots)} snapshots, {len(prices)} prices found")
-
-        time.sleep(1)  # Be nice to archive.org
 
     return prices
 
