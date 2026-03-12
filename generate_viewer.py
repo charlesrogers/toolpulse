@@ -14,8 +14,10 @@ Usage:
 
 import json
 import os
+import re
 import sqlite3
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
 
 BASE_DIR = os.path.dirname(__file__)
 DB_PATH = os.path.join(BASE_DIR, "data", "toolpulse.db")
@@ -122,6 +124,129 @@ def load_data():
             "deal_list": deal_by_sku.get(sku, []),
         })
 
+    # ── Fair Price / Buy Signal ────────────────────────────────────────────
+    today = date.today().isoformat()
+    for p in product_list:
+        prices = [s["price"] for s in p["snapshots"] if s["price"] is not None]
+        if len(prices) < 2:
+            continue
+        # Current price = most recent snapshot
+        current = prices[-1]
+        hist_avg = sum(prices) / len(prices)
+        # Percentile: what % of historical prices are >= current (higher = better buy)
+        pctl = round(sum(1 for pr in prices if pr >= current) / len(prices) * 100)
+        # Signal
+        best_deal = p["best_deal"]
+        if pctl >= 80 or (best_deal is not None and current <= best_deal):
+            sig = "green"
+        elif pctl >= 50:
+            sig = "yellow"
+        else:
+            sig = "red"
+        p["cur"] = current
+        p["pctl"] = pctl
+        p["sig"] = sig
+        p["avg"] = round(hist_avg, 2)
+
+    # ── Sale Event Calendar ───────────────────────────────────────────────
+    def normalize_date(d):
+        """Parse MM/DD/YYYY or YYYY-MM-DD into date object."""
+        if not d:
+            return None
+        try:
+            if "/" in d:
+                parts = d.split("/")
+                if len(parts) == 3:
+                    return date(int(parts[2]), int(parts[0]), int(parts[1]))
+            elif "-" in d and len(d) >= 10:
+                return date.fromisoformat(d[:10])
+        except (ValueError, IndexError):
+            pass
+        return None
+
+    # Group deals by month to detect sale events
+    month_deals = defaultdict(set)  # month -> set of item_numbers
+    month_prices = defaultdict(list)  # month -> list of deal_prices
+    for p in product_list:
+        for d in p["deal_list"]:
+            dt = normalize_date(d.get("from") or d.get("thru"))
+            if dt and dt.year >= 2020:
+                month_key = f"{dt.year}-{dt.month:02d}"
+                month_deals[month_key].add(p["sku"])
+                if d["price"]:
+                    month_prices[month_key].append(d["price"])
+
+    # Events = months with 50+ products on deal
+    events = []
+    month_labels = {1: "New Year", 2: "Presidents' Day", 3: "Spring", 4: "Spring",
+                    5: "Memorial Day", 6: "Summer", 7: "4th of July", 8: "Back to School",
+                    9: "Fall", 10: "Fall", 11: "Black Friday", 12: "Holiday"}
+    for month_key in sorted(month_deals.keys()):
+        count = len(month_deals[month_key])
+        if count >= 50:
+            y, m = month_key.split("-")
+            events.append({
+                "month": month_key,
+                "products": count,
+                "label": f"{month_labels.get(int(m), '')} Sale",
+            })
+
+    # Predict next event from historical month patterns
+    event_months = defaultdict(list)  # month_num -> list of product counts
+    for ev in events:
+        m = int(ev["month"].split("-")[1])
+        event_months[m].append(ev["products"])
+
+    today_dt = date.today()
+    next_event = None
+    for offset in range(1, 13):
+        check = today_dt.replace(day=1) + timedelta(days=32 * offset)
+        m = check.month
+        if m in event_months:
+            avg_products = sum(event_months[m]) // len(event_months[m])
+            target = date(check.year, m, 1)
+            days_away = (target - today_dt).days
+            if days_away > 0:
+                next_event = {
+                    "month": f"{check.year}-{m:02d}",
+                    "label": month_labels.get(m, "Sale"),
+                    "avg_products": avg_products,
+                    "days_away": days_away,
+                    "occurrences": len(event_months[m]),
+                }
+                break
+
+    stats["events"] = events
+    stats["next_event"] = next_event
+
+    # ── Deal Prediction ───────────────────────────────────────────────────
+    for p in product_list:
+        if len(p["deal_list"]) < 3:
+            continue
+        deal_dates = []
+        for d in p["deal_list"]:
+            dt = normalize_date(d.get("from") or d.get("thru"))
+            if dt:
+                deal_dates.append(dt)
+        deal_dates = sorted(set(deal_dates))
+        if len(deal_dates) < 3:
+            continue
+        # Calculate intervals
+        intervals = [(deal_dates[i+1] - deal_dates[i]).days for i in range(len(deal_dates)-1)]
+        intervals = [iv for iv in intervals if iv > 7]  # Filter out same-event duplicates
+        if not intervals:
+            continue
+        avg_cycle = sum(intervals) // len(intervals)
+        days_since = (today_dt - deal_dates[-1]).days
+        days_until = avg_cycle - days_since
+        p["deal_freq"] = {
+            "avg_cycle": avg_cycle,
+            "last_deal": deal_dates[-1].isoformat(),
+            "days_since": days_since,
+            "days_until": days_until,
+            "overdue": days_until < 0,
+        }
+
     return product_list, stats
 
 
@@ -135,6 +260,7 @@ def generate_html(products, stats):
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ToolPulse — Harbor Freight Price Tracker</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
 <style>
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e0e0e0; }}
@@ -195,6 +321,45 @@ td.num {{ text-align: center; }}
 .section-title {{ font-size: 14px; font-weight: 600; color: #aaa; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 0.5px; }}
 
 .no-data-msg {{ color: #555; font-style: italic; padding: 12px 0; }}
+
+/* Event banner */
+.event-banner {{ display: flex; align-items: center; gap: 12px; padding: 12px 32px; background: linear-gradient(135deg, #1a2a1a, #1a1d29); border-bottom: 1px solid #2d5a1e; font-size: 14px; flex-wrap: wrap; }}
+.event-banner strong {{ color: #7ddf64; }}
+.event-icon {{ font-size: 20px; }}
+.event-detail {{ color: #888; font-size: 12px; }}
+
+/* Signal dots */
+.signal {{ display: inline-block; width: 10px; height: 10px; border-radius: 50%; }}
+.signal.green {{ background: #7ddf64; box-shadow: 0 0 6px rgba(125,223,100,0.4); }}
+.signal.yellow {{ background: #f0c040; box-shadow: 0 0 6px rgba(240,192,64,0.4); }}
+.signal.red {{ background: #ff6b6b; box-shadow: 0 0 6px rgba(255,107,107,0.4); }}
+td.signal-cell {{ text-align: center; }}
+
+/* Fair price banner in detail */
+.fair-price {{ padding: 14px 18px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }}
+.fair-price.green {{ background: rgba(45,90,30,0.4); border: 1px solid #2d5a1e; }}
+.fair-price.yellow {{ background: rgba(60,50,15,0.4); border: 1px solid #5a4a1e; }}
+.fair-price.red {{ background: rgba(60,20,20,0.4); border: 1px solid #5a1e1e; }}
+.fair-price .big {{ font-size: 18px; font-weight: 700; }}
+.fair-price .green {{ color: #7ddf64; }}
+.fair-price .yellow {{ color: #f0c040; }}
+.fair-price .red {{ color: #ff6b6b; }}
+
+/* Price bar */
+.price-bar {{ position: relative; height: 8px; background: #282a36; border-radius: 4px; margin: 10px 0; }}
+.price-bar .fill {{ position: absolute; height: 100%; background: linear-gradient(90deg, #7ddf64, #f0c040, #ff6b6b); border-radius: 4px; left: 0; }}
+.price-bar .marker {{ position: absolute; top: -4px; width: 3px; height: 16px; background: #fff; border-radius: 2px; }}
+.price-bar-labels {{ display: flex; justify-content: space-between; font-size: 11px; color: #888; }}
+
+/* Deal prediction */
+.deal-pred {{ padding: 12px 16px; background: #1e2030; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }}
+.deal-pred .overdue {{ color: #ff6b6b; font-weight: 600; }}
+.deal-pred .upcoming {{ color: #7ddf64; }}
+
+/* Event timeline */
+.event-timeline {{ display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 0; }}
+.event-block {{ padding: 6px 12px; border-radius: 6px; font-size: 11px; background: #1e2030; border: 1px solid #333; }}
+.event-block .count {{ font-weight: 700; color: #6c9fff; }}
 </style>
 </head>
 <body>
@@ -210,7 +375,19 @@ td.num {{ text-align: center; }}
   <div class="stat"><div class="num">{stats['with_deals']}</div><div class="label">With Deals</div></div>
   <div class="stat"><div class="num">{stats['snapshots']:,}</div><div class="label">Price Snapshots</div></div>
   <div class="stat"><div class="num">{stats['deals']:,}</div><div class="label">Deals Tracked</div></div>
-</div>
+</div>"""
+
+    # Next event banner
+    ne = stats.get("next_event")
+    if ne:
+        html += f"""
+<div class="event-banner">
+  <span class="event-icon">📅</span>
+  <span>Next predicted sale: <strong>{ne['label']} Sale — {ne['month']}</strong></span>
+  <span class="event-detail">~{ne['days_away']} days away · Based on {ne['occurrences']} past event{'s' if ne['occurrences'] > 1 else ''} averaging {ne['avg_products']} products on deal</span>
+</div>"""
+
+    html += f"""
 
 <div class="controls">
   <input type="text" id="search" placeholder="Search by SKU, name, or brand..." autofocus>
@@ -219,6 +396,8 @@ td.num {{ text-align: center; }}
     <option value="has-data" selected>With Price/Deal Data</option>
     <option value="has-prices">With Price History</option>
     <option value="has-deals">With Deals</option>
+    <option value="buy-now">🟢 Buy Now (Great Price)</option>
+    <option value="overdue">⏰ Overdue for Deal</option>
   </select>
   <div class="count" id="count"></div>
 </div>
@@ -227,13 +406,15 @@ td.num {{ text-align: center; }}
   <table>
     <thead>
       <tr>
+        <th data-col="sig" title="Buy signal">Signal</th>
         <th data-col="sku">SKU</th>
         <th data-col="name">Product</th>
         <th data-col="brand">Brand</th>
-        <th data-col="snaps">Snapshots</th>
-        <th data-col="deals">Deals</th>
-        <th data-col="min">Price Range</th>
+        <th data-col="cur">Current</th>
+        <th data-col="min">Range</th>
         <th data-col="best_deal">Best Deal</th>
+        <th data-col="deals">Deals</th>
+        <th data-col="deal_next">Next Deal</th>
       </tr>
     </thead>
     <tbody id="tbody"></tbody>
@@ -261,6 +442,8 @@ function renderTable() {{
     if (currentFilter === 'has-data') return p.snaps > 0 || p.deals > 0;
     if (currentFilter === 'has-prices') return p.snaps > 0;
     if (currentFilter === 'has-deals') return p.deals > 0;
+    if (currentFilter === 'buy-now') return p.sig === 'green';
+    if (currentFilter === 'overdue') return p.deal_freq && p.deal_freq.overdue;
     return true;
   }});
 
@@ -274,7 +457,17 @@ function renderTable() {{
   }}
 
   items.sort((a, b) => {{
-    let av = a[sortCol], bv = b[sortCol];
+    let av, bv;
+    if (sortCol === 'sig') {{
+      const sigOrder = {{green: 0, yellow: 1, red: 2}};
+      av = a.sig ? sigOrder[a.sig] : 9;
+      bv = b.sig ? sigOrder[b.sig] : 9;
+    }} else if (sortCol === 'deal_next') {{
+      av = a.deal_freq ? a.deal_freq.days_until : null;
+      bv = b.deal_freq ? b.deal_freq.days_until : null;
+    }} else {{
+      av = a[sortCol]; bv = b[sortCol];
+    }}
     if (av == null) av = sortDir > 0 ? Infinity : -Infinity;
     if (bv == null) bv = sortDir > 0 ? Infinity : -Infinity;
     if (typeof av === 'string') return sortDir * av.localeCompare(bv);
@@ -284,15 +477,24 @@ function renderTable() {{
   const tbody = document.getElementById('tbody');
   tbody.innerHTML = items.slice(0, 500).map(p => {{
     const hasData = p.snaps > 0 || p.deals > 0;
-    const priceRange = p.min != null ? (p.min === p.max ? formatPrice(p.min) : formatPrice(p.min) + ' – ' + formatPrice(p.max)) : '—';
+    const priceRange = p.min != null ? (p.min === p.max ? formatPrice(p.min) : formatPrice(p.min) + '–' + formatPrice(p.max)) : '—';
+    const sigDot = p.sig ? `<span class="signal ${{p.sig}}"></span>` : '';
+    const curPrice = p.cur != null ? formatPrice(p.cur) : '—';
+    let nextDeal = '';
+    if (p.deal_freq) {{
+      if (p.deal_freq.overdue) nextDeal = `<span style="color:#ff6b6b;font-weight:600">OVERDUE</span>`;
+      else nextDeal = `<span style="color:#7ddf64">~${{p.deal_freq.days_until}}d</span>`;
+    }}
     return `<tr class="${{hasData ? 'has-data' : 'no-data'}}" onclick="showDetail('${{p.sku}}')">
+      <td class="signal-cell">${{sigDot}}</td>
       <td class="sku">${{p.sku}}</td>
       <td>${{p.name || '<em>Unknown</em>'}}</td>
       <td class="brand">${{p.brand}}</td>
-      <td class="num">${{p.snaps || ''}}</td>
-      <td class="num">${{p.deals ? '<span class="deal-badge">' + p.deals + '</span>' : ''}}</td>
+      <td class="price">${{curPrice}}</td>
       <td class="price">${{priceRange}}</td>
       <td class="price">${{p.best_deal != null ? formatPrice(p.best_deal) : ''}}</td>
+      <td class="num">${{p.deals ? '<span class="deal-badge">' + p.deals + '</span>' : ''}}</td>
+      <td class="num">${{nextDeal}}</td>
     </tr>`;
   }}).join('');
 
@@ -401,6 +603,46 @@ function showDetail(sku) {{
     timelineHtml = '<div class="section-title">Price Timeline</div><div class="no-data-msg">No price data yet — pending Wayback backfill</div>';
   }}
 
+  // Fair Price analysis
+  let fairPriceHtml = '';
+  if (p.sig && p.cur != null) {{
+    const sigLabels = {{green: 'GREAT PRICE — Buy Now', yellow: 'FAIR PRICE', red: 'WAIT FOR SALE'}};
+    const sigDescs = {{
+      green: `This <strong>${{formatPrice(p.cur)}}</strong> is cheaper than <strong>${{p.pctl}}%</strong> of prices we've tracked`,
+      yellow: `This <strong>${{formatPrice(p.cur)}}</strong> is in the middle of the historical range`,
+      red: `This <strong>${{formatPrice(p.cur)}}</strong> is higher than usual — consider waiting for a sale`
+    }};
+    let barHtml = '';
+    if (p.min != null && p.max != null && p.max > p.min) {{
+      const pos = Math.min(100, Math.max(0, ((p.cur - p.min) / (p.max - p.min)) * 100));
+      barHtml = `<div class="price-bar"><div class="fill" style="width:100%"></div><div class="marker" style="left:${{pos}}%"></div></div>
+        <div class="price-bar-labels"><span>Low ${{formatPrice(p.min)}}</span><span>Avg ${{formatPrice(p.avg)}}</span><span>High ${{formatPrice(p.max)}}</span></div>`;
+    }}
+    let dealCompare = '';
+    if (p.best_deal != null && p.best_deal < p.cur) {{
+      const diff = p.cur - p.best_deal;
+      dealCompare = `<div style="margin-top:8px;color:#888;font-size:12px">Best deal ever: ${{formatPrice(p.best_deal)}} (${{formatPrice(diff)}} below current)</div>`;
+    }}
+    fairPriceHtml = `<div class="fair-price ${{p.sig}}">
+      <div class="big"><span class="${{p.sig}}">${{sigLabels[p.sig]}}</span></div>
+      <div style="margin-top:4px">${{sigDescs[p.sig]}}</div>
+      ${{barHtml}}${{dealCompare}}
+    </div>`;
+  }}
+
+  // Deal prediction
+  let dealPredHtml = '';
+  if (p.deal_freq) {{
+    const df = p.deal_freq;
+    const status = df.overdue
+      ? `<span class="overdue">OVERDUE by ${{Math.abs(df.days_until)}} days</span>`
+      : `<span class="upcoming">Next deal likely in ~${{df.days_until}} days</span>`;
+    dealPredHtml = `<div class="deal-pred">
+      <strong>Deal Frequency:</strong> Goes on sale roughly every <strong>${{df.avg_cycle}} days</strong><br>
+      Last deal: ${{df.last_deal}} (${{df.days_since}} days ago) · ${{status}}
+    </div>`;
+  }}
+
   // Savings calc
   let savingsHtml = '';
   if (p.best_deal != null && p.max != null && p.max > p.best_deal) {{
@@ -420,6 +662,8 @@ function showDetail(sku) {{
       ${{p.brand ? ' · ' + p.brand : ''}}
       · ${{hfLink}}
     </div>
+    ${{fairPriceHtml}}
+    ${{dealPredHtml}}
     ${{savingsHtml}}
     ${{timelineHtml}}
   `;
@@ -477,6 +721,20 @@ function showDetail(sku) {{
                 const t = timeline[ctx.dataIndex];
                 return t ? (t.type === 'deal' ? 'Deal: ' : 'Price: ') + '$' + t.price.toFixed(2) + (t.label ? ' — ' + t.label : '') : '';
               }}
+            }}
+          }},
+          annotation: {{
+            annotations: {{
+              ...(p.avg != null ? {{avgLine: {{
+                type: 'line', yMin: p.avg, yMax: p.avg,
+                borderColor: 'rgba(108,159,255,0.4)', borderDash: [6,3], borderWidth: 1,
+                label: {{ display: true, content: 'Avg $' + p.avg.toFixed(2), position: 'start', color: '#888', font: {{size: 10}}, backgroundColor: 'transparent' }}
+              }}}} : {{}}),
+              ...(p.best_deal != null ? {{dealLine: {{
+                type: 'line', yMin: p.best_deal, yMax: p.best_deal,
+                borderColor: 'rgba(125,223,100,0.4)', borderDash: [6,3], borderWidth: 1,
+                label: {{ display: true, content: 'Best Deal $' + p.best_deal.toFixed(2), position: 'end', color: '#7ddf64', font: {{size: 10}}, backgroundColor: 'transparent' }}
+              }}}} : {{}}),
             }}
           }},
         }},
