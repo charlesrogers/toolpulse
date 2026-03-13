@@ -328,7 +328,7 @@ def generate_html(deals, stats, events, categories, brands):
     --purple-text:   oklch(0.72 0.14 300);
   }}
 }}
-.dark {{
+html.dark {{
   --bg:         oklch(0.145 0.014 260);
   --bg-raised:  oklch(0.155 0.014 260);
   --card:       oklch(0.195 0.013 260);
