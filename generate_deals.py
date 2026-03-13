@@ -272,81 +272,124 @@ def generate_html(deals, stats, events, categories, brands):
 <title>ToolPulse — Deal Explorer</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
+/* ── Theme Variables (Robinhood-inspired dark, OKLCH) ── */
+:root {{
+  /* Surface hierarchy — each level ~5% lighter for depth */
+  --bg:         oklch(0.145 0.014 260);
+  --bg-raised:  oklch(0.155 0.014 260);
+  --card:       oklch(0.195 0.013 260);
+  --muted:      oklch(0.20  0.012 260);
+  --accent:     oklch(0.22  0.013 260);
+  --secondary:  oklch(0.24  0.012 260);
+  --border:     oklch(0.28  0.012 260);
+
+  /* Text */
+  --fg:         oklch(0.92 0.005 250);
+  --fg-muted:   oklch(0.58 0.01  250);
+  --fg-faint:   oklch(0.45 0.01  250);
+
+  /* Interactive */
+  --primary:    oklch(0.62 0.19 265);
+
+  /* Status — transparent washes over surface */
+  --green-wash:    oklch(0.55 0.15 145 / 0.12);
+  --green-border:  oklch(0.55 0.15 145 / 0.22);
+  --green-text:    oklch(0.72 0.17 150);
+
+  --yellow-wash:   oklch(0.70 0.15 85 / 0.12);
+  --yellow-border: oklch(0.70 0.15 85 / 0.22);
+  --yellow-text:   oklch(0.78 0.14 85);
+
+  --red-wash:      oklch(0.55 0.20 25 / 0.12);
+  --red-border:    oklch(0.55 0.20 25 / 0.20);
+  --red-text:      oklch(0.70 0.18 22);
+
+  --purple-wash:   oklch(0.55 0.15 300 / 0.12);
+  --purple-border: oklch(0.55 0.15 300 / 0.22);
+  --purple-text:   oklch(0.72 0.14 300);
+
+  /* Radius */
+  --radius: 0.5rem;
+  --radius-sm: 0.3rem;
+  --radius-lg: 0.625rem;
+}}
+
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e0e0e0; }}
+html {{ -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }}
+body {{ font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--fg); }}
 
-.header {{ background: linear-gradient(135deg, #1a1d29, #2a2d3a); padding: 24px 32px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }}
-.header h1 {{ font-size: 24px; color: #fff; }}
-.header .subtitle {{ color: #888; font-size: 14px; margin-top: 4px; }}
+.header {{ background: var(--bg-raised); padding: 24px 32px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }}
+.header h1 {{ font-size: 24px; color: var(--fg); }}
+.header .subtitle {{ color: var(--fg-muted); font-size: 14px; margin-top: 4px; }}
 .header .nav {{ display: flex; gap: 12px; }}
-.header .nav a {{ color: #6c9fff; text-decoration: none; padding: 6px 14px; border: 1px solid #333; border-radius: 6px; font-size: 13px; }}
-.header .nav a:hover {{ background: #1e2030; border-color: #6c9fff; }}
+.header .nav a {{ color: var(--primary); text-decoration: none; padding: 6px 14px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; }}
+.header .nav a:hover {{ background: var(--card); border-color: var(--primary); }}
 
-.stats-bar {{ display: flex; gap: 24px; padding: 16px 32px; background: #161822; border-bottom: 1px solid #282a36; flex-wrap: wrap; }}
+.stats-bar {{ display: flex; gap: 24px; padding: 16px 32px; background: var(--card); border-bottom: 1px solid var(--border); flex-wrap: wrap; }}
 .stat {{ text-align: center; }}
-.stat .num {{ font-size: 28px; font-weight: 700; color: #7ddf64; }}
-.stat .num.blue {{ color: #6c9fff; }}
-.stat .num.orange {{ color: #f0c040; }}
-.stat .num.pink {{ color: #ff6b9d; }}
-.stat .label {{ font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }}
+.stat .num {{ font-size: 28px; font-weight: 700; color: var(--green-text); }}
+.stat .num.blue {{ color: var(--primary); }}
+.stat .num.orange {{ color: var(--yellow-text); }}
+.stat .num.pink {{ color: var(--red-text); }}
+.stat .label {{ font-size: 12px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.5px; }}
 
 /* Events Leaderboard */
-.events-section {{ padding: 20px 32px; background: #13151f; border-bottom: 1px solid #282a36; }}
-.events-section h2 {{ font-size: 16px; color: #fff; margin-bottom: 12px; }}
+.events-section {{ padding: 20px 32px; background: var(--bg-raised); border-bottom: 1px solid var(--border); }}
+.events-section h2 {{ font-size: 16px; color: var(--fg); margin-bottom: 12px; }}
 .events-row {{ display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; scroll-behavior: smooth; }}
 .events-row::-webkit-scrollbar {{ height: 6px; }}
-.events-row::-webkit-scrollbar-track {{ background: #1e2030; border-radius: 3px; }}
-.events-row::-webkit-scrollbar-thumb {{ background: #444; border-radius: 3px; }}
-.event-card {{ min-width: 220px; max-width: 260px; background: #1e2030; border: 1px solid #333; border-radius: 10px; padding: 14px 16px; cursor: pointer; transition: all 0.2s; flex-shrink: 0; }}
-.event-card:hover {{ border-color: #6c9fff; background: #242640; }}
-.event-card.active {{ border-color: #7ddf64; background: #1a2a1a; }}
-.event-card .event-name {{ font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-.event-card .event-dates {{ font-size: 11px; color: #888; margin-bottom: 8px; }}
+.events-row::-webkit-scrollbar-track {{ background: var(--card); border-radius: 3px; }}
+.events-row::-webkit-scrollbar-thumb {{ background: var(--secondary); border-radius: 3px; }}
+.event-card {{ min-width: 220px; max-width: 260px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; cursor: pointer; transition: all 0.15s; flex-shrink: 0; }}
+.event-card:hover {{ border-color: var(--primary); background: var(--accent); }}
+.event-card.active {{ border-color: var(--green-text); background: var(--green-wash); }}
+.event-card .event-name {{ font-size: 14px; font-weight: 600; color: var(--fg); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.event-card .event-dates {{ font-size: 11px; color: var(--fg-muted); margin-bottom: 8px; }}
 .event-card .event-stats {{ display: flex; gap: 12px; }}
 .event-card .event-stat {{ text-align: center; }}
-.event-card .event-stat .ev-num {{ font-size: 18px; font-weight: 700; color: #6c9fff; }}
-.event-card .event-stat .ev-label {{ font-size: 10px; color: #666; text-transform: uppercase; }}
-.event-card.recent {{ border-color: #2d5a1e; }}
+.event-card .event-stat .ev-num {{ font-size: 18px; font-weight: 700; color: var(--primary); }}
+.event-card .event-stat .ev-label {{ font-size: 10px; color: var(--fg-faint); text-transform: uppercase; }}
+.event-card.recent {{ border-color: var(--green-border); }}
 
 .chart-section {{ padding: 24px 32px; }}
-.chart-section h2 {{ font-size: 18px; color: #fff; margin-bottom: 4px; }}
-.chart-section .desc {{ color: #888; font-size: 13px; margin-bottom: 16px; }}
-.chart-wrapper {{ position: relative; height: 400px; background: #161822; border-radius: 12px; padding: 16px; border: 1px solid #282a36; }}
+.chart-section h2 {{ font-size: 18px; color: var(--fg); margin-bottom: 4px; }}
+.chart-section .desc {{ color: var(--fg-muted); font-size: 13px; margin-bottom: 16px; }}
+.chart-wrapper {{ position: relative; height: 400px; background: var(--card); border-radius: var(--radius-lg); padding: 16px; border: 1px solid var(--border); }}
 .chart-wrapper canvas {{ cursor: pointer; }}
 
-.controls {{ padding: 16px 32px; background: #161822; border-bottom: 1px solid #282a36; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }}
-.controls input {{ background: #1e2030; border: 1px solid #333; color: #e0e0e0; padding: 8px 14px; border-radius: 6px; font-size: 14px; width: 300px; }}
-.controls input:focus {{ outline: none; border-color: #6c9fff; }}
-.controls select {{ background: #1e2030; border: 1px solid #333; color: #e0e0e0; padding: 8px 14px; border-radius: 6px; font-size: 14px; }}
-.controls .count {{ color: #888; font-size: 13px; margin-left: auto; }}
-.controls .clear-event {{ background: #3a1a1a; color: #ff6b6b; border: 1px solid #5a2d2d; padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; display: none; }}
-.controls .clear-event:hover {{ background: #4a2020; }}
+.controls {{ padding: 16px 32px; background: var(--card); border-bottom: 1px solid var(--border); display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }}
+.controls input {{ background: var(--accent); border: 1px solid var(--border); color: var(--fg); padding: 8px 14px; border-radius: var(--radius); font-size: 14px; width: 300px; }}
+.controls input:focus {{ outline: none; border-color: var(--primary); }}
+.controls select {{ background: var(--accent); border: 1px solid var(--border); color: var(--fg); padding: 8px 14px; border-radius: var(--radius); font-size: 14px; }}
+.controls .count {{ color: var(--fg-muted); font-size: 13px; margin-left: auto; }}
+.controls .clear-event {{ background: var(--red-wash); color: var(--red-text); border: 1px solid var(--red-border); padding: 6px 12px; border-radius: var(--radius); font-size: 13px; cursor: pointer; display: none; }}
+.controls .clear-event:hover {{ background: var(--red-border); }}
 
 .container {{ padding: 16px 32px; }}
 
 table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
-thead th {{ background: #1e2030; padding: 10px 12px; text-align: left; font-weight: 600; color: #aaa; border-bottom: 2px solid #333; cursor: pointer; user-select: none; white-space: nowrap; }}
-thead th:hover {{ color: #6c9fff; }}
-thead th.sorted-asc::after {{ content: ' \\25B2'; color: #6c9fff; }}
-thead th.sorted-desc::after {{ content: ' \\25BC'; color: #6c9fff; }}
-tbody tr {{ border-bottom: 1px solid #222; }}
-tbody tr:hover {{ background: #1e2030; }}
+thead th {{ background: var(--card); padding: 10px 12px; text-align: left; font-weight: 600; color: var(--fg-muted); border-bottom: 2px solid var(--border); cursor: pointer; user-select: none; white-space: nowrap; }}
+thead th:hover {{ color: var(--primary); }}
+thead th.sorted-asc::after {{ content: ' \\25B2'; color: var(--primary); }}
+thead th.sorted-desc::after {{ content: ' \\25BC'; color: var(--primary); }}
+tbody tr {{ border-bottom: 1px solid var(--accent); }}
+tbody tr:hover {{ background: var(--card); }}
 td {{ padding: 8px 12px; vertical-align: top; }}
-td.price {{ font-family: 'SF Mono', monospace; text-align: right; white-space: nowrap; }}
+td.price {{ font-family: ui-monospace, SFMono-Regular, 'SF Mono', monospace; text-align: right; white-space: nowrap; }}
 td.num {{ text-align: center; }}
-.sku {{ color: #6c9fff; font-weight: 600; font-family: 'SF Mono', monospace; }}
-.brand {{ color: #888; font-size: 12px; }}
-.deal-badge {{ background: #2d5a1e; color: #7ddf64; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }}
+.sku {{ color: var(--primary); font-weight: 600; font-family: ui-monospace, SFMono-Regular, 'SF Mono', monospace; }}
+.brand {{ color: var(--fg-muted); font-size: 12px; }}
+.deal-badge {{ background: var(--green-wash); color: var(--green-text); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }}
 .discount-badge {{ padding: 3px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; display: inline-block; }}
-.discount-badge.great {{ background: #2d5a1e; color: #7ddf64; }}
-.discount-badge.good {{ background: #3a3a1e; color: #f0c040; }}
-.discount-badge.ok {{ background: #2a2a30; color: #aaa; }}
-a.product-link {{ color: #6c9fff; text-decoration: none; }}
+.discount-badge.great {{ background: var(--green-wash); color: var(--green-text); }}
+.discount-badge.good {{ background: var(--yellow-wash); color: var(--yellow-text); }}
+.discount-badge.ok {{ background: var(--muted); color: var(--fg-muted); }}
+a.product-link {{ color: var(--primary); text-decoration: none; }}
 a.product-link:hover {{ text-decoration: underline; }}
-a.coupon-link {{ color: #f0c040; text-decoration: none; font-size: 11px; }}
+a.coupon-link {{ color: var(--yellow-text); text-decoration: none; font-size: 11px; }}
 a.coupon-link:hover {{ text-decoration: underline; }}
-.source-tag {{ display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; background: #1e2030; color: #888; border: 1px solid #333; }}
-.itc-tag {{ background: #3a1a3a; color: #d07ddf; border-color: #5a2d5a; }}
+.source-tag {{ display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; background: var(--card); color: var(--fg-muted); border: 1px solid var(--border); }}
+.itc-tag {{ background: var(--purple-wash); color: var(--purple-text); border-color: var(--purple-border); }}
 </style>
 </head>
 <body>
@@ -661,13 +704,13 @@ function buildChart() {{
             const pct = bucketLabels[i];
             if (pct >= 50) return 'rgba(125,223,100,0.25)';
             if (pct >= 25) return 'rgba(240,192,64,0.2)';
-            return 'rgba(108,159,255,0.15)';
+            return 'rgba(91,141,240,0.15)';
           }}),
           borderColor: barData.map((_, i) => {{
             const pct = bucketLabels[i];
             if (pct >= 50) return 'rgba(125,223,100,0.5)';
             if (pct >= 25) return 'rgba(240,192,64,0.4)';
-            return 'rgba(108,159,255,0.3)';
+            return 'rgba(91,141,240,0.3)';
           }}),
           borderWidth: 1,
           barPercentage: 1.0,
@@ -679,9 +722,9 @@ function buildChart() {{
           label: 'Individual deals',
           data: scatterData,
           backgroundColor: scatterData.map(pt => {{
-            if (pt.deal.discount >= 50) return '#7ddf64';
-            if (pt.deal.discount >= 25) return '#f0c040';
-            return '#6c9fff';
+            if (pt.deal.discount >= 50) return '#5ec26a';
+            if (pt.deal.discount >= 25) return '#d4a843';
+            return '#5b8df0';
           }}),
           borderColor: 'transparent',
           pointRadius: 3.5,
@@ -729,14 +772,14 @@ function buildChart() {{
       scales: {{
         x: {{
           type: 'category',
-          ticks: {{ color: '#888' }},
-          grid: {{ color: '#282a36' }},
-          title: {{ display: true, text: 'Discount %', color: '#aaa' }},
+          ticks: {{ color: '#8b95a5' }},
+          grid: {{ color: '#333d4f' }},
+          title: {{ display: true, text: 'Discount %', color: '#8b95a5' }},
         }},
         y: {{
-          ticks: {{ color: '#888' }},
-          grid: {{ color: '#282a36' }},
-          title: {{ display: true, text: '# of Deals', color: '#aaa' }},
+          ticks: {{ color: '#8b95a5' }},
+          grid: {{ color: '#333d4f' }},
+          title: {{ display: true, text: '# of Deals', color: '#8b95a5' }},
         }},
       }},
       onClick: function(event, elements) {{

@@ -262,104 +262,147 @@ def generate_html(products, stats):
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
 <style>
+/* ── Theme Variables (Robinhood-inspired dark, OKLCH) ── */
+:root {{
+  /* Surface hierarchy — each level ~5% lighter for depth */
+  --bg:         oklch(0.145 0.014 260);
+  --bg-raised:  oklch(0.155 0.014 260);
+  --card:       oklch(0.195 0.013 260);
+  --muted:      oklch(0.20  0.012 260);
+  --accent:     oklch(0.22  0.013 260);
+  --secondary:  oklch(0.24  0.012 260);
+  --border:     oklch(0.28  0.012 260);
+
+  /* Text */
+  --fg:         oklch(0.92 0.005 250);
+  --fg-muted:   oklch(0.58 0.01  250);
+  --fg-faint:   oklch(0.45 0.01  250);
+
+  /* Interactive */
+  --primary:    oklch(0.62 0.19 265);
+
+  /* Status — transparent washes over surface */
+  --green-wash:    oklch(0.55 0.15 145 / 0.12);
+  --green-border:  oklch(0.55 0.15 145 / 0.22);
+  --green-text:    oklch(0.72 0.17 150);
+
+  --yellow-wash:   oklch(0.70 0.15 85 / 0.12);
+  --yellow-border: oklch(0.70 0.15 85 / 0.22);
+  --yellow-text:   oklch(0.78 0.14 85);
+
+  --red-wash:      oklch(0.55 0.20 25 / 0.12);
+  --red-border:    oklch(0.55 0.20 25 / 0.20);
+  --red-text:      oklch(0.70 0.18 22);
+
+  --purple-wash:   oklch(0.55 0.15 300 / 0.12);
+  --purple-border: oklch(0.55 0.15 300 / 0.22);
+  --purple-text:   oklch(0.72 0.14 300);
+
+  /* Radius */
+  --radius: 0.5rem;
+  --radius-sm: 0.3rem;
+  --radius-lg: 0.625rem;
+}}
+
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e0e0e0; }}
+html {{ -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }}
+body {{ font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--fg); }}
 
-.header {{ background: linear-gradient(135deg, #1a1d29, #2a2d3a); padding: 24px 32px; border-bottom: 1px solid #333; }}
-.header h1 {{ font-size: 24px; color: #fff; }}
-.header .subtitle {{ color: #888; font-size: 14px; margin-top: 4px; }}
+.header {{ background: var(--bg-raised); padding: 24px 32px; border-bottom: 1px solid var(--border); }}
+.header h1 {{ font-size: 24px; color: var(--fg); }}
+.header .subtitle {{ color: var(--fg-muted); font-size: 14px; margin-top: 4px; }}
 
-.stats-bar {{ display: flex; gap: 24px; padding: 16px 32px; background: #161822; border-bottom: 1px solid #282a36; flex-wrap: wrap; }}
+.stats-bar {{ display: flex; gap: 24px; padding: 16px 32px; background: var(--card); border-bottom: 1px solid var(--border); flex-wrap: wrap; }}
 .stat {{ text-align: center; }}
-.stat .num {{ font-size: 28px; font-weight: 700; color: #6c9fff; }}
-.stat .label {{ font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }}
+.stat .num {{ font-size: 28px; font-weight: 700; color: var(--primary); }}
+.stat .label {{ font-size: 12px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.5px; }}
 
-.controls {{ padding: 16px 32px; background: #161822; border-bottom: 1px solid #282a36; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }}
-.controls input {{ background: #1e2030; border: 1px solid #333; color: #e0e0e0; padding: 8px 14px; border-radius: 6px; font-size: 14px; width: 300px; }}
-.controls input:focus {{ outline: none; border-color: #6c9fff; }}
-.controls select {{ background: #1e2030; border: 1px solid #333; color: #e0e0e0; padding: 8px 14px; border-radius: 6px; font-size: 14px; }}
-.controls .count {{ color: #888; font-size: 13px; margin-left: auto; }}
+.controls {{ padding: 16px 32px; background: var(--card); border-bottom: 1px solid var(--border); display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }}
+.controls input {{ background: var(--accent); border: 1px solid var(--border); color: var(--fg); padding: 8px 14px; border-radius: var(--radius); font-size: 14px; width: 300px; }}
+.controls input:focus {{ outline: none; border-color: var(--primary); }}
+.controls select {{ background: var(--accent); border: 1px solid var(--border); color: var(--fg); padding: 8px 14px; border-radius: var(--radius); font-size: 14px; }}
+.controls .count {{ color: var(--fg-muted); font-size: 13px; margin-left: auto; }}
 
 .container {{ padding: 16px 32px; }}
 
 table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
-thead th {{ background: #1e2030; padding: 10px 12px; text-align: left; font-weight: 600; color: #aaa; border-bottom: 2px solid #333;
+thead th {{ background: var(--card); padding: 10px 12px; text-align: left; font-weight: 600; color: var(--fg-muted); border-bottom: 2px solid var(--border);
   cursor: pointer; user-select: none; white-space: nowrap; }}
-thead th:hover {{ color: #6c9fff; }}
-thead th.sorted-asc::after {{ content: ' ▲'; color: #6c9fff; }}
-thead th.sorted-desc::after {{ content: ' ▼'; color: #6c9fff; }}
-tbody tr {{ border-bottom: 1px solid #222; cursor: pointer; }}
-tbody tr:hover {{ background: #1e2030; }}
+thead th:hover {{ color: var(--primary); }}
+thead th.sorted-asc::after {{ content: ' ▲'; color: var(--primary); }}
+thead th.sorted-desc::after {{ content: ' ▼'; color: var(--primary); }}
+tbody tr {{ border-bottom: 1px solid var(--accent); cursor: pointer; }}
+tbody tr:hover {{ background: var(--card); }}
 tbody tr.has-data {{ }}
-tbody tr.no-data td {{ color: #555; }}
+tbody tr.no-data td {{ color: var(--fg-faint); }}
 td {{ padding: 8px 12px; vertical-align: top; }}
-td.price {{ font-family: 'SF Mono', monospace; text-align: right; white-space: nowrap; }}
+td.price {{ font-family: ui-monospace, SFMono-Regular, 'SF Mono', monospace; text-align: right; white-space: nowrap; }}
 td.num {{ text-align: center; }}
-.sku {{ color: #6c9fff; font-weight: 600; font-family: 'SF Mono', monospace; }}
-.brand {{ color: #888; font-size: 12px; }}
-.deal-badge {{ background: #2d5a1e; color: #7ddf64; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }}
-.price-range {{ font-size: 12px; color: #888; }}
+.sku {{ color: var(--primary); font-weight: 600; font-family: ui-monospace, SFMono-Regular, 'SF Mono', monospace; }}
+.brand {{ color: var(--fg-muted); font-size: 12px; }}
+.deal-badge {{ background: var(--green-wash); color: var(--green-text); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }}
+.price-range {{ font-size: 12px; color: var(--fg-muted); }}
 
 /* Detail panel */
 .detail-overlay {{ display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 100; }}
 .detail-overlay.open {{ display: flex; justify-content: center; align-items: flex-start; padding-top: 60px; }}
-.detail-panel {{ background: #1a1d29; border-radius: 12px; width: 90%; max-width: 900px; max-height: 80vh; overflow-y: auto; padding: 24px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }}
-.detail-panel h2 {{ font-size: 20px; color: #fff; margin-bottom: 4px; }}
-.detail-panel .meta {{ color: #888; font-size: 13px; margin-bottom: 16px; }}
-.detail-panel .meta a {{ color: #6c9fff; text-decoration: none; }}
+.detail-panel {{ background: var(--bg-raised); border-radius: var(--radius-lg); width: 90%; max-width: 900px; max-height: 80vh; overflow-y: auto; padding: 24px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }}
+.detail-panel h2 {{ font-size: 20px; color: var(--fg); margin-bottom: 4px; }}
+.detail-panel .meta {{ color: var(--fg-muted); font-size: 13px; margin-bottom: 16px; }}
+.detail-panel .meta a {{ color: var(--primary); text-decoration: none; }}
 .detail-panel .meta a:hover {{ text-decoration: underline; }}
-.detail-panel .close-btn {{ float: right; background: none; border: none; color: #888; font-size: 24px; cursor: pointer; }}
-.detail-panel .close-btn:hover {{ color: #fff; }}
+.detail-panel .close-btn {{ float: right; background: none; border: none; color: var(--fg-muted); font-size: 24px; cursor: pointer; }}
+.detail-panel .close-btn:hover {{ color: var(--fg); }}
 
 .chart-container {{ height: 250px; margin-bottom: 24px; }}
 
 .deal-table {{ width: 100%; font-size: 13px; margin-top: 12px; }}
-.deal-table th {{ background: #222; padding: 6px 10px; text-align: left; color: #aaa; }}
-.deal-table td {{ padding: 6px 10px; border-bottom: 1px solid #282a36; }}
-.deal-table a {{ color: #6c9fff; text-decoration: none; }}
+.deal-table th {{ background: var(--accent); padding: 6px 10px; text-align: left; color: var(--fg-muted); }}
+.deal-table td {{ padding: 6px 10px; border-bottom: 1px solid var(--border); }}
+.deal-table a {{ color: var(--primary); text-decoration: none; }}
 
-.section-title {{ font-size: 14px; font-weight: 600; color: #aaa; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 0.5px; }}
+.section-title {{ font-size: 14px; font-weight: 600; color: var(--fg-muted); margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 0.5px; }}
 
-.no-data-msg {{ color: #555; font-style: italic; padding: 12px 0; }}
+.no-data-msg {{ color: var(--fg-faint); font-style: italic; padding: 12px 0; }}
 
 /* Event banner */
-.event-banner {{ display: flex; align-items: center; gap: 12px; padding: 12px 32px; background: linear-gradient(135deg, #1a2a1a, #1a1d29); border-bottom: 1px solid #2d5a1e; font-size: 14px; flex-wrap: wrap; }}
-.event-banner strong {{ color: #7ddf64; }}
+.event-banner {{ display: flex; align-items: center; gap: 12px; padding: 12px 32px; background: var(--green-wash); border-bottom: 1px solid var(--green-border); font-size: 14px; flex-wrap: wrap; }}
+.event-banner strong {{ color: var(--green-text); }}
 .event-icon {{ font-size: 20px; }}
-.event-detail {{ color: #888; font-size: 12px; }}
+.event-detail {{ color: var(--fg-muted); font-size: 12px; }}
 
 /* Signal dots */
 .signal {{ display: inline-block; width: 10px; height: 10px; border-radius: 50%; }}
-.signal.green {{ background: #7ddf64; box-shadow: 0 0 6px rgba(125,223,100,0.4); }}
-.signal.yellow {{ background: #f0c040; box-shadow: 0 0 6px rgba(240,192,64,0.4); }}
-.signal.red {{ background: #ff6b6b; box-shadow: 0 0 6px rgba(255,107,107,0.4); }}
+.signal.green {{ background: var(--green-text); box-shadow: 0 0 6px oklch(0.55 0.15 145 / 0.4); }}
+.signal.yellow {{ background: var(--yellow-text); box-shadow: 0 0 6px oklch(0.70 0.15 85 / 0.4); }}
+.signal.red {{ background: var(--red-text); box-shadow: 0 0 6px oklch(0.55 0.20 25 / 0.4); }}
 td.signal-cell {{ text-align: center; }}
 
 /* Fair price banner in detail */
-.fair-price {{ padding: 14px 18px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }}
-.fair-price.green {{ background: rgba(45,90,30,0.4); border: 1px solid #2d5a1e; }}
-.fair-price.yellow {{ background: rgba(60,50,15,0.4); border: 1px solid #5a4a1e; }}
-.fair-price.red {{ background: rgba(60,20,20,0.4); border: 1px solid #5a1e1e; }}
+.fair-price {{ padding: 14px 18px; border-radius: var(--radius); margin-bottom: 16px; font-size: 14px; }}
+.fair-price.green {{ background: var(--green-wash); border: 1px solid var(--green-border); }}
+.fair-price.yellow {{ background: var(--yellow-wash); border: 1px solid var(--yellow-border); }}
+.fair-price.red {{ background: var(--red-wash); border: 1px solid var(--red-border); }}
 .fair-price .big {{ font-size: 18px; font-weight: 700; }}
-.fair-price .green {{ color: #7ddf64; }}
-.fair-price .yellow {{ color: #f0c040; }}
-.fair-price .red {{ color: #ff6b6b; }}
+.fair-price .green {{ color: var(--green-text); }}
+.fair-price .yellow {{ color: var(--yellow-text); }}
+.fair-price .red {{ color: var(--red-text); }}
 
 /* Price bar */
-.price-bar {{ position: relative; height: 8px; background: #282a36; border-radius: 4px; margin: 10px 0; }}
-.price-bar .fill {{ position: absolute; height: 100%; background: linear-gradient(90deg, #7ddf64, #f0c040, #ff6b6b); border-radius: 4px; left: 0; }}
-.price-bar .marker {{ position: absolute; top: -4px; width: 3px; height: 16px; background: #fff; border-radius: 2px; }}
-.price-bar-labels {{ display: flex; justify-content: space-between; font-size: 11px; color: #888; }}
+.price-bar {{ position: relative; height: 8px; background: var(--border); border-radius: 4px; margin: 10px 0; }}
+.price-bar .fill {{ position: absolute; height: 100%; background: linear-gradient(90deg, var(--green-text), var(--yellow-text), var(--red-text)); border-radius: 4px; left: 0; }}
+.price-bar .marker {{ position: absolute; top: -4px; width: 3px; height: 16px; background: var(--fg); border-radius: 2px; }}
+.price-bar-labels {{ display: flex; justify-content: space-between; font-size: 11px; color: var(--fg-muted); }}
 
 /* Deal prediction */
-.deal-pred {{ padding: 12px 16px; background: #1e2030; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }}
-.deal-pred .overdue {{ color: #ff6b6b; font-weight: 600; }}
-.deal-pred .upcoming {{ color: #7ddf64; }}
+.deal-pred {{ padding: 12px 16px; background: var(--card); border-radius: var(--radius); margin-bottom: 16px; font-size: 13px; }}
+.deal-pred .overdue {{ color: var(--red-text); font-weight: 600; }}
+.deal-pred .upcoming {{ color: var(--green-text); }}
 
 /* Event timeline */
 .event-timeline {{ display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 0; }}
-.event-block {{ padding: 6px 12px; border-radius: 6px; font-size: 11px; background: #1e2030; border: 1px solid #333; }}
-.event-block .count {{ font-weight: 700; color: #6c9fff; }}
+.event-block {{ padding: 6px 12px; border-radius: var(--radius); font-size: 11px; background: var(--card); border: 1px solid var(--border); }}
+.event-block .count {{ font-weight: 700; color: var(--primary); }}
 </style>
 </head>
 <body>
@@ -370,8 +413,8 @@ td.signal-cell {{ text-align: center; }}
     <div class="subtitle">Generated {generated}</div>
   </div>
   <div style="display:flex;gap:12px">
-    <a href="current-sales.html" style="color:#6c9fff;text-decoration:none;padding:6px 14px;border:1px solid #333;border-radius:6px;font-size:13px">Current Sales</a>
-    <a href="deals.html" style="color:#6c9fff;text-decoration:none;padding:6px 14px;border:1px solid #333;border-radius:6px;font-size:13px">Deal History</a>
+    <a href="current-sales.html" style="color:var(--primary);text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px">Current Sales</a>
+    <a href="deals.html" style="color:var(--primary);text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px">Deal History</a>
   </div>
 </div>
 
@@ -488,8 +531,8 @@ function renderTable() {{
     const curPrice = p.cur != null ? formatPrice(p.cur) : '—';
     let nextDeal = '';
     if (p.deal_freq) {{
-      if (p.deal_freq.overdue) nextDeal = `<span style="color:#ff6b6b;font-weight:600">OVERDUE</span>`;
-      else nextDeal = `<span style="color:#7ddf64">~${{p.deal_freq.days_until}}d</span>`;
+      if (p.deal_freq.overdue) nextDeal = `<span style="color:var(--red-text);font-weight:600">OVERDUE</span>`;
+      else nextDeal = `<span style="color:var(--green-text)">~${{p.deal_freq.days_until}}d</span>`;
     }}
     return `<tr class="${{hasData ? 'has-data' : 'no-data'}}" onclick="showDetail('${{p.sku}}')">
       <td class="signal-cell">${{sigDot}}</td>
@@ -589,14 +632,14 @@ function showDetail(sku) {{
   let timelineHtml = '';
   if (hasTimeline) {{
     const rows = timeline.map(t => {{
-      const priceColor = t.type === 'deal' ? 'color:#7ddf64;font-weight:600' : '';
-      const rowBg = t.change === 'up' ? 'background:rgba(255,107,107,0.08)' : t.change === 'down' ? 'background:rgba(125,223,100,0.08)' : t.type === 'deal' ? 'background:rgba(240,192,64,0.08)' : '';
-      const changeIcon = t.change === 'up' ? '<span style="color:#ff6b6b">&#9650;</span>'
-        : t.change === 'down' ? '<span style="color:#7ddf64">&#9660;</span>'
-        : t.type === 'deal' ? '<span style="color:#f0c040">&#9733;</span>'
+      const priceColor = t.type === 'deal' ? 'color:var(--green-text);font-weight:600' : '';
+      const rowBg = t.change === 'up' ? 'background:var(--red-wash)' : t.change === 'down' ? 'background:var(--green-wash)' : t.type === 'deal' ? 'background:var(--yellow-wash)' : '';
+      const changeIcon = t.change === 'up' ? '<span style="color:var(--red-text)">&#9650;</span>'
+        : t.change === 'down' ? '<span style="color:var(--green-text)">&#9660;</span>'
+        : t.type === 'deal' ? '<span style="color:var(--yellow-text)">&#9733;</span>'
         : t.change === 'first' ? '&#127991;' : '—';
       const typeLabel = t.type === 'deal' ? '<span class="deal-badge">Deal</span>' : t.source === 'wayback' ? 'Wayback' : (t.source || '');
-      const linkHtml = t.url ? ' <a href="' + t.url + '" target="_blank" style="color:#6c9fff">[coupon]</a>' : '';
+      const linkHtml = t.url ? ' <a href="' + t.url + '" target="_blank" style="color:var(--primary)">[coupon]</a>' : '';
       return `<tr style="${{rowBg}}"><td>${{t.date}}</td><td style="${{priceColor}}">${{formatPrice(t.price)}}</td><td>${{typeLabel}}</td><td>${{changeIcon}}</td><td>${{t.label}}${{linkHtml}}</td></tr>`;
     }}).join('');
     timelineHtml = `<div class="section-title">Price Timeline (${{timeline.length}} events)</div>
@@ -627,7 +670,7 @@ function showDetail(sku) {{
     let dealCompare = '';
     if (p.best_deal != null && p.best_deal < p.cur) {{
       const diff = p.cur - p.best_deal;
-      dealCompare = `<div style="margin-top:8px;color:#888;font-size:12px">Best deal ever: ${{formatPrice(p.best_deal)}} (${{formatPrice(diff)}} below current)</div>`;
+      dealCompare = `<div style="margin-top:8px;color:var(--fg-muted);font-size:12px">Best deal ever: ${{formatPrice(p.best_deal)}} (${{formatPrice(diff)}} below current)</div>`;
     }}
     fairPriceHtml = `<div class="fair-price ${{p.sig}}">
       <div class="big"><span class="${{p.sig}}">${{sigLabels[p.sig]}}</span></div>
@@ -654,8 +697,8 @@ function showDetail(sku) {{
   if (p.best_deal != null && p.max != null && p.max > p.best_deal) {{
     const saved = p.max - p.best_deal;
     const pct = ((saved / p.max) * 100).toFixed(0);
-    savingsHtml = `<div style="background:#2d5a1e;padding:12px 16px;border-radius:8px;margin-bottom:16px;">
-      Best deal: <strong style="color:#7ddf64">${{formatPrice(p.best_deal)}}</strong> vs
+    savingsHtml = `<div style="background:var(--green-wash);padding:12px 16px;border-radius:var(--radius);margin-bottom:16px;border:1px solid var(--green-border)">
+      Best deal: <strong style="color:var(--green-text)">${{formatPrice(p.best_deal)}}</strong> vs
       regular ${{formatPrice(p.max)}} — save ${{formatPrice(saved)}} (${{pct}}% off)
     </div>`;
   }}
@@ -694,22 +737,22 @@ function showDetail(sku) {{
           {{
             label: 'Regular Price',
             data: timeline.map(t => t.type === 'regular' ? t.price : null),
-            borderColor: '#6c9fff',
-            backgroundColor: 'rgba(108,159,255,0.1)',
+            borderColor: '#5b8df0',
+            backgroundColor: 'rgba(91,141,240,0.1)',
             fill: true,
             tension: 0.3,
             pointRadius: t => {{
               const idx = timeline.indexOf(t);
               return idx >= 0 && timeline[idx].change !== 'same' ? 5 : 3;
             }},
-            pointBackgroundColor: timeline.map(t => t.change === 'up' ? '#ff6b6b' : t.change === 'down' ? '#7ddf64' : '#6c9fff'),
+            pointBackgroundColor: timeline.map(t => t.change === 'up' ? '#d4635a' : t.change === 'down' ? '#5ec26a' : '#5b8df0'),
             spanGaps: true,
           }},
           ...(dealPts.length ? [{{
             label: 'Deal Price',
             data: timeline.map(t => t.type === 'deal' ? t.price : null),
-            borderColor: '#7ddf64',
-            backgroundColor: '#f0c040',
+            borderColor: '#5ec26a',
+            backgroundColor: '#d4a843',
             pointRadius: 7,
             pointStyle: 'triangle',
             showLine: false,
@@ -720,7 +763,7 @@ function showDetail(sku) {{
         responsive: true,
         maintainAspectRatio: false,
         plugins: {{
-          legend: {{ labels: {{ color: '#aaa' }} }},
+          legend: {{ labels: {{ color: '#8b95a5' }} }},
           tooltip: {{
             callbacks: {{
               label: function(ctx) {{
@@ -733,25 +776,25 @@ function showDetail(sku) {{
             annotations: {{
               ...(p.avg != null ? {{avgLine: {{
                 type: 'line', yMin: p.avg, yMax: p.avg,
-                borderColor: 'rgba(108,159,255,0.4)', borderDash: [6,3], borderWidth: 1,
-                label: {{ display: true, content: 'Avg $' + p.avg.toFixed(2), position: 'start', color: '#888', font: {{size: 10}}, backgroundColor: 'transparent' }}
+                borderColor: 'rgba(91,141,240,0.4)', borderDash: [6,3], borderWidth: 1,
+                label: {{ display: true, content: 'Avg $' + p.avg.toFixed(2), position: 'start', color: '#8b95a5', font: {{size: 10}}, backgroundColor: 'transparent' }}
               }}}} : {{}}),
               ...(p.best_deal != null ? {{dealLine: {{
                 type: 'line', yMin: p.best_deal, yMax: p.best_deal,
-                borderColor: 'rgba(125,223,100,0.4)', borderDash: [6,3], borderWidth: 1,
-                label: {{ display: true, content: 'Best Deal $' + p.best_deal.toFixed(2), position: 'end', color: '#7ddf64', font: {{size: 10}}, backgroundColor: 'transparent' }}
+                borderColor: 'rgba(94,194,106,0.4)', borderDash: [6,3], borderWidth: 1,
+                label: {{ display: true, content: 'Best Deal $' + p.best_deal.toFixed(2), position: 'end', color: '#5ec26a', font: {{size: 10}}, backgroundColor: 'transparent' }}
               }}}} : {{}}),
             }}
           }},
         }},
         scales: {{
-          x: {{ ticks: {{ color: '#888', maxRotation: 45 }}, grid: {{ color: '#282a36' }} }},
+          x: {{ ticks: {{ color: '#8b95a5', maxRotation: 45 }}, grid: {{ color: '#333d4f' }} }},
           y: {{
             ticks: {{
-              color: '#888',
+              color: '#8b95a5',
               callback: v => '$' + v.toFixed(2),
             }},
-            grid: {{ color: '#282a36' }},
+            grid: {{ color: '#333d4f' }},
           }},
         }},
       }},
