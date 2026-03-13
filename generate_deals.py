@@ -272,9 +272,63 @@ def generate_html(deals, stats, events, categories, brands):
 <title>ToolPulse — Deal Explorer</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
-/* ── Theme Variables (Robinhood-inspired dark, OKLCH) ── */
+/* ── Theme Variables (Light default, Stripe-inspired OKLCH) ── */
 :root {{
-  /* Surface hierarchy — each level ~5% lighter for depth */
+  --bg:         oklch(0.985 0.002 250);
+  --bg-raised:  oklch(0.975 0.003 250);
+  --card:       oklch(1 0 0);
+  --muted:      oklch(0.96 0.005 250);
+  --accent:     oklch(0.95 0.01 250);
+  --secondary:  oklch(0.96 0.005 250);
+  --border:     oklch(0.91 0.005 250);
+  --fg:         oklch(0.16 0.02 260);
+  --fg-muted:   oklch(0.50 0.015 260);
+  --fg-faint:   oklch(0.65 0.01 260);
+  --primary:    oklch(0.45 0.18 265);
+  --green-wash:    oklch(0.55 0.15 145 / 0.08);
+  --green-border:  oklch(0.55 0.15 145 / 0.18);
+  --green-text:    oklch(0.40 0.15 150);
+  --yellow-wash:   oklch(0.70 0.15 85 / 0.10);
+  --yellow-border: oklch(0.70 0.15 85 / 0.18);
+  --yellow-text:   oklch(0.45 0.14 85);
+  --red-wash:      oklch(0.55 0.20 25 / 0.08);
+  --red-border:    oklch(0.55 0.20 25 / 0.18);
+  --red-text:      oklch(0.48 0.18 22);
+  --purple-wash:   oklch(0.55 0.15 300 / 0.08);
+  --purple-border: oklch(0.55 0.15 300 / 0.18);
+  --purple-text:   oklch(0.45 0.14 300);
+  --radius: 0.5rem;
+  --radius-sm: 0.3rem;
+  --radius-lg: 0.625rem;
+}}
+@media (prefers-color-scheme: dark) {{
+  :root {{
+    --bg:         oklch(0.145 0.014 260);
+    --bg-raised:  oklch(0.155 0.014 260);
+    --card:       oklch(0.195 0.013 260);
+    --muted:      oklch(0.20  0.012 260);
+    --accent:     oklch(0.22  0.013 260);
+    --secondary:  oklch(0.24  0.012 260);
+    --border:     oklch(0.28  0.012 260);
+    --fg:         oklch(0.92 0.005 250);
+    --fg-muted:   oklch(0.58 0.01  250);
+    --fg-faint:   oklch(0.45 0.01  250);
+    --primary:    oklch(0.62 0.19 265);
+    --green-wash:    oklch(0.55 0.15 145 / 0.12);
+    --green-border:  oklch(0.55 0.15 145 / 0.22);
+    --green-text:    oklch(0.72 0.17 150);
+    --yellow-wash:   oklch(0.70 0.15 85 / 0.12);
+    --yellow-border: oklch(0.70 0.15 85 / 0.22);
+    --yellow-text:   oklch(0.78 0.14 85);
+    --red-wash:      oklch(0.55 0.20 25 / 0.12);
+    --red-border:    oklch(0.55 0.20 25 / 0.20);
+    --red-text:      oklch(0.70 0.18 22);
+    --purple-wash:   oklch(0.55 0.15 300 / 0.12);
+    --purple-border: oklch(0.55 0.15 300 / 0.22);
+    --purple-text:   oklch(0.72 0.14 300);
+  }}
+}}
+.dark {{
   --bg:         oklch(0.145 0.014 260);
   --bg-raised:  oklch(0.155 0.014 260);
   --card:       oklch(0.195 0.013 260);
@@ -282,36 +336,22 @@ def generate_html(deals, stats, events, categories, brands):
   --accent:     oklch(0.22  0.013 260);
   --secondary:  oklch(0.24  0.012 260);
   --border:     oklch(0.28  0.012 260);
-
-  /* Text */
   --fg:         oklch(0.92 0.005 250);
   --fg-muted:   oklch(0.58 0.01  250);
   --fg-faint:   oklch(0.45 0.01  250);
-
-  /* Interactive */
   --primary:    oklch(0.62 0.19 265);
-
-  /* Status — transparent washes over surface */
   --green-wash:    oklch(0.55 0.15 145 / 0.12);
   --green-border:  oklch(0.55 0.15 145 / 0.22);
   --green-text:    oklch(0.72 0.17 150);
-
   --yellow-wash:   oklch(0.70 0.15 85 / 0.12);
   --yellow-border: oklch(0.70 0.15 85 / 0.22);
   --yellow-text:   oklch(0.78 0.14 85);
-
   --red-wash:      oklch(0.55 0.20 25 / 0.12);
   --red-border:    oklch(0.55 0.20 25 / 0.20);
   --red-text:      oklch(0.70 0.18 22);
-
   --purple-wash:   oklch(0.55 0.15 300 / 0.12);
   --purple-border: oklch(0.55 0.15 300 / 0.22);
   --purple-text:   oklch(0.72 0.14 300);
-
-  /* Radius */
-  --radius: 0.5rem;
-  --radius-sm: 0.3rem;
-  --radius-lg: 0.625rem;
 }}
 
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -390,9 +430,29 @@ a.coupon-link {{ color: var(--yellow-text); text-decoration: none; font-size: 11
 a.coupon-link:hover {{ text-decoration: underline; }}
 .source-tag {{ display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; background: var(--card); color: var(--fg-muted); border: 1px solid var(--border); }}
 .itc-tag {{ background: var(--purple-wash); color: var(--purple-text); border-color: var(--purple-border); }}
+
+/* Theme toggle */
+.theme-toggle {{ background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px; cursor: pointer; color: var(--fg-muted); display: flex; align-items: center; transition: all 0.15s; }}
+.theme-toggle:hover {{ color: var(--fg); border-color: var(--primary); }}
+.dark .theme-toggle .sun-icon {{ display: block; }}
+.dark .theme-toggle .moon-icon {{ display: none; }}
+.theme-toggle .sun-icon {{ display: none; }}
+.theme-toggle .moon-icon {{ display: block; }}
 </style>
 </head>
 <body>
+<script>
+(function() {{
+  var saved = localStorage.getItem('toolpulse-theme');
+  if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {{
+    document.documentElement.classList.add('dark');
+  }}
+}})();
+function toggleTheme() {{
+  var isDark = document.documentElement.classList.toggle('dark');
+  localStorage.setItem('toolpulse-theme', isDark ? 'dark' : 'light');
+}}
+</script>
 
 <div class="header">
   <div>
@@ -402,6 +462,10 @@ a.coupon-link:hover {{ text-decoration: underline; }}
   <div class="nav">
     <a href="current-sales.html">Current Sales</a>
     <a href="index.html">Products &amp; Prices</a>
+    <button onclick="toggleTheme()" class="theme-toggle" aria-label="Toggle theme">
+      <svg class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      <svg class="moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
   </div>
 </div>
 
@@ -479,6 +543,9 @@ a.coupon-link:hover {{ text-decoration: underline; }}
 <script>
 const DEALS = {json.dumps(deals, separators=(',', ':'))};
 const EVENTS = {events_json};
+
+function isDark() {{ return document.documentElement.classList.contains('dark') || (!localStorage.getItem('toolpulse-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches); }}
+const TC = isDark() ? {{ grid: '#333d4f', tick: '#8b95a5', green: '#5ec26a', yellow: '#d4a843', red: '#d4635a', blue: '#5b8df0', blueAlpha: 'rgba(91,141,240,' }} : {{ grid: '#e2e5ea', tick: '#6b7280', green: '#16a34a', yellow: '#ca8a04', red: '#dc2626', blue: '#3b6de0', blueAlpha: 'rgba(59,109,224,' }};
 
 let sortCol = 'discount';
 let sortDir = -1;
@@ -722,9 +789,9 @@ function buildChart() {{
           label: 'Individual deals',
           data: scatterData,
           backgroundColor: scatterData.map(pt => {{
-            if (pt.deal.discount >= 50) return '#5ec26a';
-            if (pt.deal.discount >= 25) return '#d4a843';
-            return '#5b8df0';
+            if (pt.deal.discount >= 50) return TC.green;
+            if (pt.deal.discount >= 25) return TC.yellow;
+            return TC.blue;
           }}),
           borderColor: 'transparent',
           pointRadius: 3.5,
@@ -772,14 +839,14 @@ function buildChart() {{
       scales: {{
         x: {{
           type: 'category',
-          ticks: {{ color: '#8b95a5' }},
-          grid: {{ color: '#333d4f' }},
-          title: {{ display: true, text: 'Discount %', color: '#8b95a5' }},
+          ticks: {{ color: TC.tick }},
+          grid: {{ color: TC.grid }},
+          title: {{ display: true, text: 'Discount %', color: TC.tick }},
         }},
         y: {{
-          ticks: {{ color: '#8b95a5' }},
-          grid: {{ color: '#333d4f' }},
-          title: {{ display: true, text: '# of Deals', color: '#8b95a5' }},
+          ticks: {{ color: TC.tick }},
+          grid: {{ color: TC.grid }},
+          title: {{ display: true, text: '# of Deals', color: TC.tick }},
         }},
       }},
       onClick: function(event, elements) {{

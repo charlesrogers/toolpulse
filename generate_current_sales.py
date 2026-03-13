@@ -309,46 +309,86 @@ def generate_html(deals, stats, events, categories, brands):
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ToolPulse — Current Sales</title>
 <style>
-/* ── Theme Variables (Robinhood-inspired dark, OKLCH) ── */
+/* ── Theme Variables (Light default, Stripe-inspired OKLCH) ── */
 :root {{
-  /* Surface hierarchy — each level ~5% lighter for depth */
-  --bg:         oklch(0.145 0.014 260);  /* L0: page background */
-  --bg-raised:  oklch(0.155 0.014 260);  /* L0.5: slightly raised */
-  --card:       oklch(0.195 0.013 260);  /* L1: cards, table headers */
-  --muted:      oklch(0.20  0.012 260);  /* L1.5: muted surfaces */
-  --accent:     oklch(0.22  0.013 260);  /* L2: accents, hover */
-  --secondary:  oklch(0.24  0.012 260);  /* L3: secondary surfaces */
-  --border:     oklch(0.28  0.012 260);  /* L4: borders */
-
-  /* Text */
-  --fg:         oklch(0.92 0.005 250);   /* primary text (off-white) */
-  --fg-muted:   oklch(0.58 0.01  250);   /* subdued labels */
-  --fg-faint:   oklch(0.45 0.01  250);   /* very subtle text */
-
-  /* Interactive */
-  --primary:    oklch(0.62 0.19 265);    /* links, interactive blue */
-
-  /* Status — transparent washes over surface */
-  --green-wash:    oklch(0.55 0.15 145 / 0.12);
-  --green-border:  oklch(0.55 0.15 145 / 0.22);
-  --green-text:    oklch(0.72 0.17 150);
-
-  --yellow-wash:   oklch(0.70 0.15 85 / 0.12);
-  --yellow-border: oklch(0.70 0.15 85 / 0.22);
-  --yellow-text:   oklch(0.78 0.14 85);
-
-  --red-wash:      oklch(0.55 0.20 25 / 0.12);
-  --red-border:    oklch(0.55 0.20 25 / 0.20);
-  --red-text:      oklch(0.70 0.18 22);
-
-  --purple-wash:   oklch(0.55 0.15 300 / 0.12);
-  --purple-border: oklch(0.55 0.15 300 / 0.22);
-  --purple-text:   oklch(0.72 0.14 300);
-
-  /* Radius */
+  --bg:         oklch(0.985 0.002 250);
+  --bg-raised:  oklch(0.975 0.003 250);
+  --card:       oklch(1 0 0);
+  --muted:      oklch(0.96 0.005 250);
+  --accent:     oklch(0.95 0.01 250);
+  --secondary:  oklch(0.96 0.005 250);
+  --border:     oklch(0.91 0.005 250);
+  --fg:         oklch(0.16 0.02 260);
+  --fg-muted:   oklch(0.50 0.015 260);
+  --fg-faint:   oklch(0.65 0.01 260);
+  --primary:    oklch(0.45 0.18 265);
+  --green-wash:    oklch(0.55 0.15 145 / 0.08);
+  --green-border:  oklch(0.55 0.15 145 / 0.18);
+  --green-text:    oklch(0.40 0.15 150);
+  --yellow-wash:   oklch(0.70 0.15 85 / 0.10);
+  --yellow-border: oklch(0.70 0.15 85 / 0.18);
+  --yellow-text:   oklch(0.45 0.14 85);
+  --red-wash:      oklch(0.55 0.20 25 / 0.08);
+  --red-border:    oklch(0.55 0.20 25 / 0.18);
+  --red-text:      oklch(0.48 0.18 22);
+  --purple-wash:   oklch(0.55 0.15 300 / 0.08);
+  --purple-border: oklch(0.55 0.15 300 / 0.18);
+  --purple-text:   oklch(0.45 0.14 300);
   --radius: 0.5rem;
   --radius-sm: 0.3rem;
   --radius-lg: 0.625rem;
+}}
+@media (prefers-color-scheme: dark) {{
+  :root {{
+    --bg:         oklch(0.145 0.014 260);
+    --bg-raised:  oklch(0.155 0.014 260);
+    --card:       oklch(0.195 0.013 260);
+    --muted:      oklch(0.20  0.012 260);
+    --accent:     oklch(0.22  0.013 260);
+    --secondary:  oklch(0.24  0.012 260);
+    --border:     oklch(0.28  0.012 260);
+    --fg:         oklch(0.92 0.005 250);
+    --fg-muted:   oklch(0.58 0.01  250);
+    --fg-faint:   oklch(0.45 0.01  250);
+    --primary:    oklch(0.62 0.19 265);
+    --green-wash:    oklch(0.55 0.15 145 / 0.12);
+    --green-border:  oklch(0.55 0.15 145 / 0.22);
+    --green-text:    oklch(0.72 0.17 150);
+    --yellow-wash:   oklch(0.70 0.15 85 / 0.12);
+    --yellow-border: oklch(0.70 0.15 85 / 0.22);
+    --yellow-text:   oklch(0.78 0.14 85);
+    --red-wash:      oklch(0.55 0.20 25 / 0.12);
+    --red-border:    oklch(0.55 0.20 25 / 0.20);
+    --red-text:      oklch(0.70 0.18 22);
+    --purple-wash:   oklch(0.55 0.15 300 / 0.12);
+    --purple-border: oklch(0.55 0.15 300 / 0.22);
+    --purple-text:   oklch(0.72 0.14 300);
+  }}
+}}
+.dark {{
+  --bg:         oklch(0.145 0.014 260);
+  --bg-raised:  oklch(0.155 0.014 260);
+  --card:       oklch(0.195 0.013 260);
+  --muted:      oklch(0.20  0.012 260);
+  --accent:     oklch(0.22  0.013 260);
+  --secondary:  oklch(0.24  0.012 260);
+  --border:     oklch(0.28  0.012 260);
+  --fg:         oklch(0.92 0.005 250);
+  --fg-muted:   oklch(0.58 0.01  250);
+  --fg-faint:   oklch(0.45 0.01  250);
+  --primary:    oklch(0.62 0.19 265);
+  --green-wash:    oklch(0.55 0.15 145 / 0.12);
+  --green-border:  oklch(0.55 0.15 145 / 0.22);
+  --green-text:    oklch(0.72 0.17 150);
+  --yellow-wash:   oklch(0.70 0.15 85 / 0.12);
+  --yellow-border: oklch(0.70 0.15 85 / 0.22);
+  --yellow-text:   oklch(0.78 0.14 85);
+  --red-wash:      oklch(0.55 0.20 25 / 0.12);
+  --red-border:    oklch(0.55 0.20 25 / 0.20);
+  --red-text:      oklch(0.70 0.18 22);
+  --purple-wash:   oklch(0.55 0.15 300 / 0.12);
+  --purple-border: oklch(0.55 0.15 300 / 0.22);
+  --purple-text:   oklch(0.72 0.14 300);
 }}
 
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -406,7 +446,7 @@ thead th {{ background: var(--card); padding: 10px 12px; text-align: left; font-
 thead th:hover {{ color: var(--primary); }}
 thead th.sorted-asc::after {{ content: ' \\25B2'; color: var(--primary); }}
 thead th.sorted-desc::after {{ content: ' \\25BC'; color: var(--primary); }}
-tbody tr {{ border-bottom: 1px solid oklch(0.22 0.012 260); transition: background 0.1s; }}
+tbody tr {{ border-bottom: 1px solid var(--accent); transition: background 0.1s; }}
 tbody tr:hover {{ background: var(--card); }}
 td {{ padding: 10px 12px; vertical-align: top; }}
 td.price {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; white-space: nowrap; }}
@@ -424,13 +464,13 @@ a.coupon-link:hover {{ text-decoration: underline; }}
 .signal {{ padding: 4px 10px; border-radius: var(--radius); font-size: 11px; font-weight: 700; display: inline-block; white-space: nowrap; letter-spacing: 0.3px; }}
 .signal.buy {{ background: var(--green-wash); color: var(--green-text); border: 1px solid var(--green-border); }}
 .signal.good {{ background: var(--yellow-wash); color: var(--yellow-text); border: 1px solid var(--yellow-border); }}
-.signal.wait {{ background: oklch(0.45 0.01 250 / 0.10); color: var(--fg-muted); border: 1px solid oklch(0.45 0.01 250 / 0.15); }}
+.signal.wait {{ background: var(--muted); color: var(--fg-muted); border: 1px solid var(--border); }}
 
 /* ── Discount Badges (transparency washes) ── */
 .discount-badge {{ padding: 3px 10px; border-radius: var(--radius); font-size: 12px; font-weight: 700; display: inline-block; }}
 .discount-badge.great {{ background: var(--green-wash); color: var(--green-text); }}
 .discount-badge.good {{ background: var(--yellow-wash); color: var(--yellow-text); }}
-.discount-badge.ok {{ background: oklch(0.45 0.01 250 / 0.10); color: var(--fg-muted); }}
+.discount-badge.ok {{ background: var(--muted); color: var(--fg-muted); }}
 
 /* ── Vs-Best Badges (transparency washes) ── */
 .vs-badge {{ padding: 2px 8px; border-radius: var(--radius-sm); font-size: 11px; font-weight: 600; display: inline-block; }}
@@ -450,9 +490,29 @@ a.coupon-link:hover {{ text-decoration: underline; }}
 /* ── Misc ── */
 .freq {{ font-size: 11px; color: var(--fg-faint); }}
 .itc-tag {{ display: inline-block; padding: 1px 5px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 600; background: var(--purple-wash); color: var(--purple-text); border: 1px solid var(--purple-border); margin-left: 4px; }}
+
+/* Theme toggle */
+.theme-toggle {{ background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px; cursor: pointer; color: var(--fg-muted); display: flex; align-items: center; transition: all 0.15s; }}
+.theme-toggle:hover {{ color: var(--fg); border-color: var(--primary); }}
+.dark .theme-toggle .sun-icon {{ display: block; }}
+.dark .theme-toggle .moon-icon {{ display: none; }}
+.theme-toggle .sun-icon {{ display: none; }}
+.theme-toggle .moon-icon {{ display: block; }}
 </style>
 </head>
 <body>
+<script>
+(function() {{
+  var saved = localStorage.getItem('toolpulse-theme');
+  if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {{
+    document.documentElement.classList.add('dark');
+  }}
+}})();
+function toggleTheme() {{
+  var isDark = document.documentElement.classList.toggle('dark');
+  localStorage.setItem('toolpulse-theme', isDark ? 'dark' : 'light');
+}}
+</script>
 
 <div class="header">
   <div>
@@ -462,6 +522,10 @@ a.coupon-link:hover {{ text-decoration: underline; }}
   <div class="nav">
     <a href="index.html">Products &amp; Prices</a>
     <a href="deals.html">Deal History</a>
+    <button onclick="toggleTheme()" class="theme-toggle" aria-label="Toggle theme">
+      <svg class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      <svg class="moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
   </div>
 </div>
 
